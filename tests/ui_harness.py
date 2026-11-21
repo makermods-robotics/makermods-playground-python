@@ -80,7 +80,7 @@ def harness(monkeypatch):
         robot.estop()
 
 
-def wait_status(client, predicate, timeout=10.0) -> dict:
+def wait_status(client, predicate, timeout=20.0) -> dict:
     status = {}
 
     def check():

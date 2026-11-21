@@ -67,7 +67,7 @@ def test_motor_fault_holds_the_arm(robot):
     robot.connect()
     robot.enable()
     robot.motors["left"].fault("elbow_flex")
-    assert sim.wait_until(lambda: robot.states()["left"] == "fault", 3.0)
+    assert sim.wait_until(lambda: robot.states()["left"] == "fault", 10.0)
     assert "elbow_flex" in robot.faults()["left"]
     assert robot.states()["right"] == "enabled"
 

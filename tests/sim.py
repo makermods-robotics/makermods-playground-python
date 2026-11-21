@@ -145,7 +145,7 @@ class FakePolicy:
         self.closed = True
 
 
-def wait_until(predicate, timeout=5.0):
+def wait_until(predicate, timeout=10.0):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if predicate():

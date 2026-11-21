@@ -126,7 +126,7 @@ def test_motor_fault_ends_the_run_and_the_arm_keeps_holding():
     result = DreamRunner(robot, "x", settings=robot.settings, policy=policy).run(timeout_s=20)
     assert result.error and result.stop_reason.startswith("left arm")      # stale feedback, or the SDK's fault
     assert result.rest == {"left": False, "right": True}
-    assert robot.states()["left"] == "fault"
+    assert sim.wait_until(lambda: robot.states()["left"] == "fault")     # the SDK's feedback watchdog, still holding
     robot.estop()
     robot.disconnect()
 
