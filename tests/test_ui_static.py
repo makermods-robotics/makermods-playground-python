@@ -21,15 +21,15 @@ def static_path(url: str):
 
 def test_every_static_asset_exists():
     parser = Refs()
-    parser.feed((STATIC / "index.html").read_text())
+    parser.feed((STATIC / "index.html").read_text(encoding="utf-8"))
     assert len(parser.refs) > 10
     refs = list(parser.refs)
     for js in STATIC.glob("*.js"):
-        text = js.read_text()
+        text = js.read_text(encoding="utf-8")
         refs += [f"/static/{m}" for m in re.findall(r'from "\./([^"]+)"', text)]
         refs += re.findall(r'"(/static/[^"]+)"', text)
     for css in STATIC.rglob("*.css"):
-        refs += re.findall(r'url\("(/static/[^"]+)"\)', css.read_text())
+        refs += re.findall(r'url\("(/static/[^"]+)"\)', css.read_text(encoding="utf-8"))
     missing = sorted({r for r in refs if not static_path(r).is_file()})
     assert not missing
 
@@ -39,7 +39,7 @@ def test_every_api_path_the_page_calls_is_a_route():
     routes = [r for r in app.routes if isinstance(r, APIRoute)]
     called = set()
     for js in STATIC.glob("*.js"):
-        for path in re.findall(r'["`](/api/[^"`?]+)', js.read_text()):
+        for path in re.findall(r'["`](/api/[^"`?]+)', js.read_text(encoding="utf-8")):
             called.add(re.sub(r"\$\{[^}]*\}", "x", path))
     assert {"/api/session", "/api/status", "/api/run", "/api/stop", "/api/heartbeat", "/api/release",
             "/api/robots/x/select", "/api/identify", "/api/recordings/x/x", "/api/devices/cameras/x/stream"} <= called
