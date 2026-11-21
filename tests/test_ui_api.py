@@ -133,6 +133,7 @@ def test_heartbeat_lost_stops_the_run(harness):
     save_robot()
     client = harness.client(heartbeat_s=0.5)
     run(client, task="wave", timeout_s=60)
+    wait_status(client, lambda s: (s["run"] or {}).get("phase") == "running")    # heartbeats until then
     assert sim.wait_until(lambda: not client.get("/api/status").json()["running"], 15)
     status = client.get("/api/status").json()
     assert status["result"]["stop_reason"] == "stopped" and status["result"]["rest"] == {"left": True, "right": True}

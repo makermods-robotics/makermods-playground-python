@@ -1,7 +1,5 @@
 import json
-import os
 import signal
-import threading
 
 import pytest
 import sim
@@ -177,14 +175,14 @@ def test_rest_moves_one_arm_at_a_time_and_stops_at_the_first_unverified(capsys, 
 
 
 def test_sigterm_ends_a_hold_through_its_return_to_rest(capsys, sim_robots):
-    threading.Timer(0.5, os.kill, (os.getpid(), signal.SIGTERM)).start()
+    sim_robots.prepare = lambda robot: sim.once_enabled(robot, lambda: signal.raise_signal(signal.SIGTERM))
     code, out = run(capsys, "robot", "hold", "--yes", "--json")
     assert code == 0 and out["then"] == "rest" and out["rest"] == {"left": True, "right": True}
     assert out["torque"] == {"left": "released", "right": "released"}
 
 
 def test_a_hold_ends_on_a_fault_and_exits_with_an_error(capsys, sim_robots):
-    sim_robots.prepare = lambda robot: threading.Timer(0.4, robot.motors["left"].fault, ("elbow_flex",)).start()
+    sim_robots.prepare = lambda robot: sim.once_enabled(robot, lambda: robot.motors["left"].fault("elbow_flex"))
     code, out = run(capsys, "robot", "hold", "--then", "release", "--yes")
     assert code == 1 and "fault on left" in out
 

@@ -51,11 +51,11 @@ def test_rate_and_samples():
     servo = Servo(robot, 40, sample=lambda now: {"left": np.full(7, 0.1)},
                   on_tick=lambda now, phase, cmd, meas: seen.append(phase))
     assert run_for(servo, 0.5) == "stopped"
-    # Never faster than 40 Hz; a late wake-up on a loaded machine drops ticks rather than bunching them.
+    # Never more ticks than 40 Hz allows; a loaded machine only drops ticks (a late one runs at once).
     assert 5 <= servo.stats.ticks <= 22
     assert set(seen) == {1}
     summary = servo.stats.summary()
-    assert summary["period_ms"]["p50"] >= 22
+    assert summary["ticks"] == servo.stats.ticks and summary["period_ms"]["max"] >= 20
     np.testing.assert_allclose(robot.q["left"], 0.1)
 
 

@@ -153,3 +153,10 @@ def wait_until(predicate, timeout=5.0):
         time.sleep(0.01)
     return False
 
+
+def once_enabled(robot, action, timeout=30.0):
+    """Run ``action`` on a thread once every arm of ``robot`` is enabled (a fixed delay can land in a slow enable)."""
+    def run():
+        if wait_until(lambda: all(state == "enabled" for state in robot.states().values()), timeout):
+            action()
+    threading.Thread(target=run, daemon=True).start()
