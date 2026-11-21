@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "makermods-playground"
+version = "0.1.0"
+description = "Run Dream Labs policies on MakerMods Metal and Maker arms"
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.10"
+dependencies = [
+    # The arm SDK revisions this package is built on. Pinned only here.
+    "metal-arm @ git+https://github.com/makermods-robotics/metal-arm-sdk@d6a7da8d8b20b6cdffe45f64563b35fa3f79cf5a",
+    "maker-arm @ git+https://github.com/makermods-robotics/maker-arm-sdk@d469b5cc56f4869f1c33a45db5f864db6ae8653d",
+    "dreamlabs-client>=1.1.3,<2",
+    "numpy>=1.24",
+    "pyyaml>=6",
+    "opencv-python>=4.8",
+]
+
+[project.optional-dependencies]
+ui = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1"]
+dev = ["pytest>=8", "httpx>=0.27"]
+
+[project.scripts]
+playground = "makermods_playground.cli:main"
+
+# Development: uv installs the sibling SDK checkouts instead (README, Development).
+[tool.uv.sources]
+metal-arm = {path = "../metal-arm-sdk", editable = true}
+maker-arm = {path = "../maker-arm-sdk", editable = true}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"makermods_playground.ui" = ["static/*", "static/**/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120

@@ -1,0 +1,6 @@
+makermods-playground
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Request pacing (src/makermods_playground/dream/scheduling.py, Pacer) and the takeover of a new chunk from the plan
+an arm is on (src/makermods_playground/dream/decode.py, takeover and nearest_row) follow Dream Labs'
+dreamlabs-client (dream.pacing, dream.smoothing), licensed under the Apache License, Version 2.0.

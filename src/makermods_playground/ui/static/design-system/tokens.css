@@ -1,0 +1,106 @@
+/* Home Robot Web — compiled from tokens.json. Edit tokens.json, then regenerate. */
+
+:root, [data-theme="light"] {
+  --ground: #f3f2ee;
+  --ground-raised: #ffffff;
+  --ground-sunken: #e8e6e0;
+  --ink: #151515;
+  --ink-2: #5f5e5a;
+  --ink-3: #807f7a;
+  --line: #dcdad3;
+  --cta: #151515;
+  --on-cta: #ffffff;
+  --accent: #ff8a4c;
+  --on-accent: #151515;
+  --media-ink: #141416;
+  --on-media: #ffffff;
+  --on-media-2: #c9c8c3;
+  --scrim: #0000008c;
+  --chip: #ffffff2e;
+  --focus: #151515;
+  --shadow-nav: 0 1px 2px #00000014, 0 8px 24px #0000000f;
+  --shadow-media: 0 24px 60px -24px #00000059;
+}
+
+[data-theme="dark"] {
+  --ground: #0c0c0d;
+  --ground-raised: #161618;
+  --ground-sunken: #050505;
+  --ink: #f3f2ee;
+  --ink-2: #a9a8a2;
+  --ink-3: #7d7c77;
+  --line: #2a2a2d;
+  --cta: #f3f2ee;
+  --on-cta: #151515;
+  --accent: #ff8a4c;
+  --on-accent: #151515;
+  --media-ink: #000000;
+  --on-media: #ffffff;
+  --on-media-2: #c9c8c3;
+  --scrim: #0000008c;
+  --chip: #ffffff2e;
+  --focus: #f3f2ee;
+  --shadow-nav: 0 1px 2px #00000080, 0 8px 24px #00000066;
+  --shadow-media: 0 24px 60px -24px #000000cc;
+}
+
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+  --space-9: 96px;
+  --space-10: 128px;
+  --space-11: 160px;
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-xl: 32px;
+  --radius-pill: 999px;
+  --container: 1440px;
+  --measure: 640px;
+  --measure-narrow: 440px;
+  --gutter: 24px;
+  --nav-height: 56px;
+  --duration-fast: 160ms;
+  --duration-base: 320ms;
+  --duration-slow: 700ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --font-sans: "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-serif: "Instrument Serif", Georgia, "Times New Roman", serif;
+  --font-mono: "DM Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  /* Company wordmark only: Chakra Petch is the face the logotype is set in. */
+  --font-brand: "Chakra Petch", "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
+}
+
+.display-xl { font-family: var(--font-sans); font-size: 120px; line-height: 1.0; font-weight: 600; letter-spacing: -0.035em; }
+
+.display-lg { font-family: var(--font-sans); font-size: 80px; line-height: 1.02; font-weight: 600; letter-spacing: -0.03em; }
+
+.display-md { font-family: var(--font-sans); font-size: 56px; line-height: 1.05; font-weight: 600; letter-spacing: -0.025em; }
+
+.heading { font-family: var(--font-sans); font-size: 36px; line-height: 1.15; font-weight: 600; letter-spacing: -0.02em; }
+
+.title { font-family: var(--font-sans); font-size: 24px; line-height: 1.25; font-weight: 600; letter-spacing: -0.01em; }
+
+.body-lg { font-family: var(--font-sans); font-size: 20px; line-height: 30px; font-weight: 400; }
+
+.body { font-family: var(--font-sans); font-size: 17px; line-height: 26px; font-weight: 400; }
+
+.body-sm { font-family: var(--font-sans); font-size: 15px; line-height: 22px; font-weight: 400; }
+
+.nav { font-family: var(--font-sans); font-size: 15px; line-height: 20px; font-weight: 500; }
+
+.caption { font-family: var(--font-sans); font-size: 13px; line-height: 18px; font-weight: 500; }
+
+.eyebrow { font-family: var(--font-mono); font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; }
+
+.ticker { font-family: var(--font-mono); font-size: 12px; line-height: 16px; font-weight: 400; letter-spacing: 0.06em; text-transform: uppercase; }
+
+.quote { font-family: var(--font-serif); font-size: 32px; line-height: 1.25; font-weight: 400; }
+
+.lede { font-family: var(--font-serif); font-size: 24px; line-height: 1.35; font-weight: 400; }

@@ -1,0 +1,14 @@
+/* The first-run guide: a coach card that follows the real controls, and its "?" launcher. */
+.pg-guide-launcher { position: fixed; right: max(20px, env(safe-area-inset-right)); bottom: max(20px, env(safe-area-inset-bottom)); z-index: 40; width: 44px; height: 44px; font: 500 20px/1 var(--font-sans); box-shadow: var(--shadow-nav); }
+.pg-guide { position: fixed; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; background: transparent; color: var(--ink); pointer-events: none; overflow: visible; z-index: 1000; }
+.pg-guide-ring { position: fixed; box-sizing: border-box; border: 2px solid #e8a23d; border-radius: 999px; box-shadow: 0 0 0 5px rgb(232 162 61 / .12); pointer-events: none; }
+.pg-guide-ring[hidden] { display: none; }
+.pg-guide-card { position: fixed; box-sizing: border-box; padding: 20px; border: 1px solid var(--line); border-radius: 18px; background: var(--ground-raised); color: var(--ink); box-shadow: var(--shadow-nav); pointer-events: auto; }
+.pg-guide-count { margin: 0 0 10px; color: var(--ink-2); font: 10px/1.4 var(--font-mono); letter-spacing: .1em; }
+.pg-guide-card h2 { margin: 0 0 8px; font-size: 19px; line-height: 1.25; letter-spacing: -.02em; }
+.pg-guide-copy { margin: 0; font-size: 13px; line-height: 1.6; color: var(--ink-2); }
+.pg-guide-card.is-inline { position: static; width: auto !important; margin: 0 0 16px; padding: 16px; box-shadow: none; }
+.pg-guide-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 18px; }
+.pg-guide-glow { outline: 2px solid #e8a23d; outline-offset: 4px; animation: pg-guide-pulse 1.8s ease-in-out infinite; }
+@keyframes pg-guide-pulse { 50% { box-shadow: 0 0 0 9px rgb(232 162 61 / .18), 0 0 24px rgb(232 162 61 / .22); } }
+@media (prefers-reduced-motion: reduce) { .pg-guide-glow { animation: none; } }

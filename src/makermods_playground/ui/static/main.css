@@ -1,0 +1,312 @@
+/* The page, on top of the MakerMods web design system (design-system/, copied verbatim: do not edit it here).
+   Tokens only; page rules use the pg- prefix. */
+
+/* Fonts are served locally so the page works offline. */
+@font-face { font-family: "Instrument Sans"; font-weight: 400; font-display: swap; src: url("/static/fonts/instrument-sans-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Instrument Sans"; font-weight: 500; font-display: swap; src: url("/static/fonts/instrument-sans-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "Instrument Sans"; font-weight: 600; font-display: swap; src: url("/static/fonts/instrument-sans-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "DM Mono"; font-weight: 400; font-display: swap; src: url("/static/fonts/dm-mono-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "DM Mono"; font-weight: 500; font-display: swap; src: url("/static/fonts/dm-mono-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "Chakra Petch"; font-weight: 700; font-display: swap; src: url("/static/fonts/chakra-petch-latin-700-normal.woff2") format("woff2"); }
+
+html { color-scheme: light; }
+html[data-theme="dark"] { color-scheme: dark; }
+body { transition: background-color var(--duration-base) var(--ease-out), color var(--duration-base) var(--ease-out); }
+
+.pg-visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---------- Shell ---------- */
+/* Full window width (no --container cap), so the main camera can take half of any screen. */
+.pg-shell { display: flex; flex-direction: column; min-height: 100vh; min-height: 100dvh; padding: 0 var(--gutter); box-sizing: border-box; }
+
+/* ---------- Top bar ---------- */
+.pg-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); height: var(--nav-height); padding: var(--space-4) 0; }
+.pg-wordmark { font-size: 20px; line-height: 1; }
+.pg-brand { display: flex; flex: none; align-items: center; gap: var(--space-4); }
+.pg-powered-by { display: flex; flex-direction: column; gap: 5px; padding-left: var(--space-4); border-left: 1px solid var(--line); color: var(--ink-2); font-size: 10px; line-height: 1; text-decoration: none; white-space: nowrap; }
+.pg-powered-by img { display: block; width: 108px; height: auto; }
+.pg-powered-by:hover { color: var(--ink); }
+.pg-powered-by:focus-visible { outline: 2px solid var(--focus); outline-offset: 5px; border-radius: 2px; }
+[data-theme="dark"] .pg-powered-by img { filter: brightness(0) invert(1); }
+.pg-mark-dark { display: none !important; }
+[data-theme="dark"] .pg-mark-light { display: none !important; }
+[data-theme="dark"] .pg-mark-dark { display: block !important; }
+.pg-bar-end { display: flex; align-items: center; gap: var(--space-3); }
+
+/* ---------- Robot picker (top right) ---------- */
+.pg-robot { position: relative; display: inline-flex; align-items: center; gap: 2px; height: 40px; padding: 0 3px; box-sizing: border-box; border: 1px solid var(--line); border-radius: var(--radius-pill); background: var(--ground-raised); }
+.pg-robot-icon { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--ink-2); cursor: pointer; transition: background-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out); }
+.pg-robot-icon:hover:not(:disabled) { background: var(--ground-sunken); color: var(--ink); }
+.pg-robot-icon:disabled { opacity: 0.4; cursor: default; }
+.pg-robot-rule { width: 1px; height: 18px; margin: 0 var(--space-1); background: var(--line); }
+.pg-robot-trigger { display: inline-flex; align-items: center; gap: var(--space-2); height: 32px; max-width: 240px; padding: 0 var(--space-3) 0 var(--space-3); border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--ink); font: inherit; font-size: 14px; line-height: 20px; font-weight: 500; cursor: pointer; transition: background-color var(--duration-fast) var(--ease-out); }
+.pg-robot-trigger:hover, .pg-robot-trigger[aria-expanded="true"] { background: var(--ground-sunken); }
+.pg-robot-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-robot-trigger .pg-glyph { color: var(--ink-2); }
+.pg-robot button:focus-visible, .pg-menu button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.pg-glyph { display: inline-flex; flex: none; width: 16px; height: 16px; }
+.pg-glyph svg { width: 100%; height: 100%; }
+
+/* Status dot: ready is solid ink, needs setup is a hollow ring, working is the standby light. */
+.pg-dot { flex: none; width: 8px; height: 8px; box-sizing: border-box; border-radius: var(--radius-pill); background: var(--ink); transition: background-color var(--duration-fast) var(--ease-out); }
+.pg-dot[data-state="setup"], .pg-dot[data-state="none"] { background: transparent; border: 1.5px solid var(--ink-3); }
+.pg-dot[data-state="live"] { background: var(--ink); animation: pg-pulse 1.2s var(--ease-out) infinite alternate; }
+/* The one place the accent appears on this page. */
+.pg-dot[data-state="working"] { background: var(--accent); }
+
+.pg-menu { position: absolute; top: calc(100% + var(--space-2)); right: 0; z-index: 10; width: 360px; box-sizing: border-box; padding: var(--space-2); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--ground-raised); box-shadow: var(--shadow-nav); animation: pg-rise var(--duration-fast) var(--ease-out); }
+.pg-menu[hidden] { display: none; }
+.pg-menu-head { margin: var(--space-2) var(--space-3) var(--space-2); color: var(--ink-2); }
+.pg-menu-list { display: flex; flex-direction: column; gap: 2px; max-height: 320px; overflow-y: auto; }
+.pg-menu-robot { display: flex; align-items: center; gap: var(--space-3); width: 100%; padding: var(--space-3); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.pg-menu-robot:hover, .pg-menu-robot[aria-checked="true"] { background: var(--ground); }
+.pg-menu-robot-copy { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.pg-menu-robot-name { font-size: 15px; line-height: 20px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-menu-robot-meta { font-size: 13px; line-height: 18px; color: var(--ink-2); }
+.pg-menu-empty { margin: 0; padding: var(--space-2) var(--space-3) var(--space-3); font-size: 15px; line-height: 22px; color: var(--ink-2); }
+.pg-menu-rule { height: 1px; margin: var(--space-2) 0; border: 0; background: var(--line); }
+.pg-menu-new { font-size: 15px; line-height: 20px; font-weight: 500; }
+.pg-menu-new .pg-glyph { color: var(--ink-2); }
+.pg-menu-new:disabled { color: var(--ink-3); cursor: default; background: transparent; }
+
+@keyframes pg-pulse { from { opacity: 1; } to { opacity: 0.35; } }
+
+/* ---------- Main ---------- */
+/* The page fills the viewport: cameras take whatever height the prompt leaves. */
+.pg-shell { height: 100vh; height: 100dvh; min-height: 640px; }
+.pg-main { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--space-6); padding: var(--space-3) 0 var(--space-6); }
+
+/* One camera dominates the middle at 60% of the page's width (smaller only if the height can't fit
+   it); the other two are small, one each side of it, level with its top edge. Which camera sits where
+   is each figure's data-slot (main / top = left of it / bottom = right of it), set by cameras.js. The camera area is a size
+   container, so the main frame can be sized from whichever of width or height runs out first. */
+.pg-cameras { flex: 1; min-height: 300px; container-type: size; display: grid; align-content: center; }
+.pg-stage {
+  --stage-gap: var(--space-4);
+  --main-w: min(60cqw, 100cqh * 4 / 3);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--main-w) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--stage-gap);
+}
+.pg-cam { position: relative; min-width: 0; margin: 0; }
+.pg-cam[data-slot="main"] { grid-column: 2; grid-row: 1 / span 2; }
+/* Side cameras hug the main one, at most about a third of its width. */
+.pg-cam[data-slot="top"], .pg-cam[data-slot="bottom"] { grid-row: 1; width: min(100%, var(--main-w) * 0.36); }
+.pg-cam[data-slot="top"] { grid-column: 1; justify-self: end; }
+.pg-cam[data-slot="bottom"] { grid-column: 3; justify-self: start; }
+.pg-cam-frame { width: 100%; aspect-ratio: 4 / 3; display: grid; place-items: center; box-sizing: border-box; }
+.pg-cam-frame > img { position: absolute; inset: 0; }
+/* On the dark ground media-ink is nearly the page colour, so a frame with no feed yet is lifted. */
+[data-theme="dark"] .pg-cam-frame:not(:has(> img)) { background: var(--ground-raised); }
+.pg-cam-empty { margin: 0; padding: 0 var(--space-5); font-size: 13px; line-height: 18px; font-weight: 500; text-align: center; color: var(--on-media-2); }
+.pg-cam-empty[hidden] { display: none; }
+.pg-cam[data-slot="main"] .pg-cam-empty { font-size: 15px; line-height: 22px; }
+.pg-cam-empty .pg-glyph { display: inline-flex; vertical-align: -3px; margin: 0 2px; color: var(--on-media); }
+.pg-cam[data-slot="top"] .pg-cam-frame .hr-chip-tl, .pg-cam[data-slot="bottom"] .pg-cam-frame .hr-chip-tl { top: var(--space-3); left: var(--space-3); }
+
+/* Swap: a small round button on each side camera that brings it to the middle, in the chip's style.
+   While the camera panel is open, filled frames get an Unassign pill bottom-left instead (the panel
+   can cover a frame's right edge). */
+.pg-cam-swap, .pg-cam-remove { position: absolute; top: var(--space-3); right: var(--space-3); z-index: 1; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-1); width: 28px; height: 28px; padding: 0; border: 0; border-radius: var(--radius-pill); background: var(--chip); color: var(--on-media); font: inherit; font-size: 13px; line-height: 18px; font-weight: 500; cursor: pointer; backdrop-filter: blur(8px); transition: background-color var(--duration-fast) var(--ease-out); }
+.pg-cam-remove { top: auto; right: auto; bottom: var(--space-3); left: var(--space-3); width: auto; padding: 0 var(--space-3) 0 var(--space-2); background: var(--scrim); }
+.pg-cam-remove:hover { background: var(--media-ink); }
+.pg-cam-swap .pg-glyph { width: 14px; height: 14px; }
+.pg-cam-remove .pg-glyph { width: 12px; height: 12px; }
+.pg-cam-swap:hover { background: var(--scrim); }
+.pg-cam-swap:focus-visible, .pg-cam-remove:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.pg-cam[data-slot="main"] .pg-cam-swap, .pg-stage.is-assigning .pg-cam-swap, .pg-cam-remove[hidden] { display: none; }
+
+/* A swap glides each frame to its new place where the browser supports view transitions. */
+.pg-cam:has([data-camera="top"]) { view-transition-name: pg-cam-top; }
+.pg-cam:has([data-camera="left"]) { view-transition-name: pg-cam-left; }
+.pg-cam:has([data-camera="right"]) { view-transition-name: pg-cam-right; }
+::view-transition-group(pg-cam-top), ::view-transition-group(pg-cam-left), ::view-transition-group(pg-cam-right) { animation-duration: var(--duration-base); animation-timing-function: var(--ease-out); }
+
+/* Round icon button beside the robot picker (recordings, settings, cameras). */
+.pg-icon-btn { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 40px; height: 40px; padding: 0; box-sizing: border-box; border: 1px solid var(--line); border-radius: var(--radius-pill); background: var(--ground-raised); color: var(--ink); cursor: pointer; transition: border-color var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out); }
+.pg-icon-btn:hover { border-color: var(--ink); }
+.pg-icon-btn[aria-expanded="true"] { background: var(--cta); border-color: var(--cta); color: var(--on-cta); }
+.pg-icon-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.pg-icon-btn .pg-glyph { width: 18px; height: 18px; }
+
+/* ---------- Ask ---------- */
+.pg-ask { display: flex; flex-direction: column; align-items: center; gap: var(--space-4); width: 100%; max-width: var(--measure); margin: 0 auto; }
+.pg-ask-title { margin: 0; text-align: center; }
+
+.pg-composer { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-2) var(--space-3); width: 100%; box-sizing: border-box; padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--ground-raised); transition: border-color var(--duration-fast) var(--ease-out); }
+.pg-composer .pg-prompt { grid-column: 1 / -1; padding: 0 var(--space-2); }
+.pg-composer .pg-prompt-hint { left: var(--space-2); right: var(--space-2); }
+.pg-composer-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0; }
+.pg-composer #run { grid-column: 2; grid-row: 2; align-self: end; }
+.pg-checkpoint-picker { max-width: 100%; }
+.pg-checkpoint-picker::after { right: var(--space-3); width: 5px; height: 5px; margin-top: -4px; }
+.pg-checkpoint-picker .pg-select { width: auto; max-width: 100%; height: 32px; padding: 0 var(--space-6) 0 var(--space-3); border-color: transparent; border-radius: var(--radius-pill); background: var(--ground); color: var(--ink-2); font-size: 12px; font-weight: 500; transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out); }
+.pg-checkpoint-picker .pg-select:hover:not(:disabled) { border-color: transparent; background: var(--ground-sunken); color: var(--ink); }
+.pg-checkpoint-picker:has(select:disabled)::after { opacity: .5; }
+.pg-composer:focus-within { border-color: var(--ink); }
+.pg-prompt { position: relative; flex: 1; min-width: 0; display: flex; }
+.pg-composer textarea { box-sizing: border-box; flex: 1; min-width: 0; max-height: 132px; margin: 0; padding: 7px 0; border: 0; background: transparent; resize: none; font: inherit; font-size: 15px; line-height: 22px; color: var(--ink); outline: none; }
+.pg-composer .hr-btn { flex: none; }
+.pg-composer .hr-btn[hidden] { display: none; }
+.pg-composer .hr-btn:disabled { opacity: 0.32; cursor: default; }
+.pg-rest .pg-glyph { width: 15px; height: 15px; margin-left: calc(-1 * var(--space-1)); }
+
+/* Example tasks rotate inside the empty box, standing in for a placeholder. */
+.pg-prompt-hint { position: absolute; top: 7px; left: 0; right: 0; overflow: hidden; font-size: 15px; line-height: 22px; color: var(--ink-3); white-space: nowrap; text-overflow: ellipsis; pointer-events: none; transition: opacity var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out); }
+.pg-prompt-hint[hidden] { display: none; }
+.pg-prompt-hint.is-leaving { opacity: 0; transform: translateY(-6px); }
+.pg-prompt-hint.is-entering { animation: pg-hint-in var(--duration-base) var(--ease-out); }
+@keyframes pg-hint-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+.pg-task { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); width: 100%; box-sizing: border-box; padding: var(--space-3) var(--space-3) var(--space-3) var(--space-5); border-radius: var(--radius-md); background: var(--ground-sunken); }
+.pg-task[hidden] { display: none; }
+.pg-task-text { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; margin: 0; font-size: 15px; line-height: 22px; overflow-wrap: anywhere; }
+.pg-task-text .eyebrow { color: var(--ink-2); }
+
+/* One quiet line under the composer about the arms' connection, with its actions. */
+.pg-link { display: flex; align-items: baseline; justify-content: center; gap: var(--space-2); width: 100%; min-width: 0; margin: calc(-1 * var(--space-1)) 0 0; font-size: 13px; line-height: 18px; color: var(--ink-2); white-space: nowrap; }
+.pg-link[hidden] { display: none; }
+.pg-link-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- Settings dialog ---------- */
+.pg-dialog { width: min(520px, calc(100% - 2 * var(--gutter))); padding: 0; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--ground-raised); color: var(--ink); box-shadow: var(--shadow-media); }
+.pg-dialog::backdrop { background: var(--scrim); }
+.pg-dialog[open] { animation: pg-rise var(--duration-base) var(--ease-out); }
+.pg-dialog-body { display: flex; flex-direction: column; padding: var(--space-6); }
+.pg-dialog-body .title { margin: 0 0 var(--space-4); }
+.pg-setting { display: flex; align-items: center; justify-content: space-between; gap: var(--space-5); padding: var(--space-5) 0; border-top: 1px solid var(--line); }
+.pg-setting-copy { min-width: 0; }
+.pg-setting-name { margin: 0; font-size: 15px; line-height: 20px; font-weight: 500; }
+.pg-setting-note { margin: var(--space-1) 0 0; font-size: 15px; line-height: 22px; color: var(--ink-2); }
+.pg-setting .hr-tab { height: 32px; padding: 0 var(--space-3); font-size: 14px; }
+.pg-dialog-actions { display: flex; justify-content: flex-end; padding-top: var(--space-5); border-top: 1px solid var(--line); }
+
+@keyframes pg-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+.pg-input:disabled { color: var(--ink-3); cursor: default; }
+.hr-switch:disabled { opacity: 0.4; cursor: default; }
+.hr-switch:disabled:hover { border-color: var(--line); }
+
+/* ---------- Dialog sizes and fields ---------- */
+.pg-dialog-sm { width: min(440px, calc(100% - 2 * var(--gutter))); }
+.pg-dialog-text { margin: 0 0 var(--space-5); font-size: 15px; line-height: 22px; color: var(--ink-2); }
+.pg-dialog-sm .pg-dialog-actions, .pg-dialog-md .pg-dialog-actions { gap: var(--space-3); border-top: 0; padding-top: var(--space-5); }
+.pg-input { display: block; width: 100%; height: 44px; box-sizing: border-box; padding: 0 var(--space-4); border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--ground); color: var(--ink); font: inherit; font-size: 15px; outline: none; transition: border-color var(--duration-fast) var(--ease-out); }
+.pg-input::placeholder { color: var(--ink-3); }
+.pg-input:focus { border-color: var(--ink); }
+.pg-dialog-md { width: min(560px, calc(100% - 2 * var(--gutter))); }
+
+/* Labelled fields in small dialogs. */
+.pg-field { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.pg-field + .pg-field { margin-top: var(--space-5); }
+.pg-field-label { font-size: 14px; line-height: 20px; font-weight: 500; }
+.pg-field-error { margin: 0; font-size: 13px; line-height: 18px; font-weight: 500; color: var(--ink); }
+.pg-field-error:empty { display: none; }
+
+/* New robot: the two arm types as pressable cards. */
+.pg-arm-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+.pg-arm-choice { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; padding: var(--space-2) var(--space-2) var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--ground); color: var(--ink); font: inherit; text-align: left; cursor: pointer; transition: border-color var(--duration-fast) var(--ease-out); }
+.pg-arm-choice:hover { border-color: var(--ink-3); }
+.pg-arm-choice[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.pg-arm-choice:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.pg-arm-choice-media { position: relative; display: block; aspect-ratio: 4 / 3; margin-bottom: var(--space-2); border-radius: var(--radius-sm); }
+/* Product photos are shot on white: shown whole on white. */
+.pg-arm-choice-media { background: var(--on-media); }
+.pg-arm-choice-media > img { object-fit: contain; }
+.pg-arm-choice-name { padding: 0 var(--space-1); font-size: 15px; line-height: 20px; font-weight: 600; }
+.pg-arm-choice-blurb { padding: 0 var(--space-1); font-size: 13px; line-height: 18px; color: var(--ink-2); }
+
+/* Native select, restyled: a field with a drawn chevron. */
+.pg-select-wrap { position: relative; min-width: 0; }
+.pg-select-wrap::after { content: ""; position: absolute; top: 50%; right: var(--space-4); width: 6px; height: 6px; margin-top: -5px; border-right: 1.5px solid var(--ink-2); border-bottom: 1.5px solid var(--ink-2); transform: rotate(45deg); pointer-events: none; }
+.pg-select { display: block; width: 100%; height: 40px; box-sizing: border-box; padding: 0 var(--space-7) 0 var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--ground-raised); color: var(--ink); font: inherit; font-size: 14px; appearance: none; cursor: pointer; text-overflow: ellipsis; transition: border-color var(--duration-fast) var(--ease-out); }
+.pg-select:hover:not(:disabled) { border-color: var(--ink-3); }
+.pg-select:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.pg-select:disabled { color: var(--ink-3); cursor: default; }
+.pg-select-mono { font-family: var(--font-mono); font-size: 13px; }
+
+.hr-btn:disabled { opacity: 0.4; cursor: default; }
+.hr-btn-primary:disabled:hover { opacity: 0.4; }
+.hr-btn-secondary:disabled:hover { border-color: var(--line); }
+
+/* ---------- Toasts ---------- */
+/* Spans the window so a long message (e.g. a backend's reasons) can wrap instead of overflowing. */
+.pg-toasts { position: fixed; left: 0; right: 0; bottom: var(--space-6); z-index: 100; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); padding: 0 var(--gutter); pointer-events: none; }
+.pg-toast { max-width: 640px; margin: 0; padding: var(--space-3) var(--space-5); border-radius: var(--radius-pill); background: var(--cta); color: var(--on-cta); box-shadow: var(--shadow-nav); font-size: 15px; line-height: 20px; font-weight: 500; text-align: center; text-wrap: balance; animation: pg-rise var(--duration-base) var(--ease-out); transition: opacity var(--duration-base) var(--ease-out); }
+.pg-toast.is-leaving { opacity: 0; }
+.pg-error-toasts { position: fixed; right: var(--space-5); top: 76px; z-index: 101; display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-2); width: min(420px, calc(100vw - 2 * var(--space-5))); max-height: calc(100vh - 76px - 160px); overflow-y: auto; }
+.pg-error-toast { width: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-radius: 12px; background: var(--ground-raised); color: var(--ink); border: 1px solid color-mix(in srgb, #d1495b 45%, transparent); border-left: 4px solid #d1495b; box-shadow: var(--shadow-nav); animation: pg-rise var(--duration-base) var(--ease-out); }
+.pg-error-text { margin: 0; font-size: 14px; line-height: 20px; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; cursor: text; }
+.pg-error-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); }
+.pg-error-count { margin-right: auto; font-size: 12px; color: #d1495b; font-variant-numeric: tabular-nums; }
+.pg-error-btn { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: var(--radius-pill); border: 1px solid color-mix(in srgb, currentColor 18%, transparent); background: transparent; color: inherit; font: inherit; font-size: 13px; cursor: pointer; }
+.pg-error-btn:hover { background: color-mix(in srgb, currentColor 8%, transparent); }
+.pg-error-dismiss-all { align-self: flex-end; padding: 4px 12px; border-radius: var(--radius-pill); border: 1px solid color-mix(in srgb, currentColor 18%, transparent); background: var(--ground-raised); color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; box-shadow: var(--shadow-nav); }
+
+/* ---------- Switch (new component, system style) ---------- */
+.hr-switch { position: relative; flex: none; width: 44px; height: 26px; padding: 0; border: 1px solid var(--line); border-radius: var(--radius-pill); background: var(--ground-sunken); cursor: pointer; transition: background-color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out); }
+.hr-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: var(--radius-pill); background: var(--ground-raised); box-shadow: var(--shadow-nav); transition: transform var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out); }
+.hr-switch:hover { border-color: var(--ink-3); }
+.hr-switch[aria-checked="true"] { background: var(--cta); border-color: var(--cta); }
+.hr-switch[aria-checked="true"]::after { transform: translateX(18px); background: var(--on-cta); }
+.hr-switch:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+
+/* ---------- Responsive ---------- */
+@media (max-width: 720px) {
+  .pg-bar { flex-wrap: wrap; height: auto; min-height: 88px; gap: var(--space-3); padding: var(--space-4) 0; }
+  .pg-bar-end { margin-left: auto; max-width: 100%; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); }
+  .pg-shell { height: auto; min-height: 100dvh; }
+  .pg-cameras { flex: none; min-height: 0; container-type: normal; }
+  .pg-cameras { display: block; }
+  .pg-stage { display: flex; flex-direction: column; }
+  .pg-cam[data-slot] { width: 100%; }
+  .pg-cam[data-slot="main"] { order: -1; }
+  .pg-main { gap: var(--space-7); }
+  .pg-robot-trigger { max-width: 120px; }
+  .pg-menu { width: min(360px, calc(100vw - 2 * var(--gutter))); }
+  .heading.pg-ask-title { font-size: 28px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pg-arm-choice { transition: none; }
+  .pg-dialog[open], .pg-menu, .pg-prompt-hint.is-entering, .pg-toast, .pg-error-toast, .pg-dot { animation: none; }
+  body, .hr-switch, .hr-switch::after, .pg-prompt-hint { transition: none; }
+  .pg-prompt-hint.is-leaving { transform: none; }
+  ::view-transition-group(pg-cam-top), ::view-transition-group(pg-cam-left), ::view-transition-group(pg-cam-right) { animation: none; }
+}
+
+.pg-setting[hidden] { display: none; }
+
+/* Time limit beside the model: a small pill like the model picker. */
+.pg-limit { display: inline-flex; align-items: center; gap: var(--space-1); height: 32px; padding: 0 var(--space-3); border-radius: var(--radius-pill); background: var(--ground); color: var(--ink-2); font-size: 12px; font-weight: 500; }
+.pg-limit-input { width: 48px; padding: 0; border: 0; background: transparent; color: var(--ink); font: inherit; font-variant-numeric: tabular-nums; text-align: right; outline: none; }
+.pg-limit:focus-within { box-shadow: inset 0 0 0 1px var(--ink); }
+
+.pg-link-actions { display: inline-flex; gap: var(--space-2); }
+.pg-link-btn { padding: 0; border: 0; background: transparent; color: var(--ink); font: inherit; font-weight: 500; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.pg-link-btn:disabled { color: var(--ink-3); cursor: default; }
+.pg-link[data-holding="true"] { color: var(--ink); font-weight: 500; white-space: normal; text-align: center; }
+
+/* Arms and events: joints, gripper, temperatures and faults per arm; the newest events of the run. */
+.pg-live { width: 100%; font-size: 13px; line-height: 18px; color: var(--ink-2); }
+.pg-live[hidden] { display: none; }
+.pg-live[open] { max-height: 28vh; overflow-y: auto; }
+.pg-live summary { width: fit-content; margin: 0 auto; cursor: pointer; }
+.pg-arms { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--space-3) var(--space-5); margin-top: var(--space-3); }
+.pg-arm-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin: 0 0 var(--space-1); color: var(--ink); font-weight: 600; }
+.pg-arm-fault { margin: 0 0 var(--space-1); color: var(--ink); font-weight: 500; }
+.pg-joint-row { display: flex; justify-content: space-between; gap: var(--space-2); margin: 0; padding: 2px 0; border-bottom: 1px solid var(--line); }
+.pg-joint-row span:last-child { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+.pg-events { display: flex; flex-direction: column; gap: 2px; margin: var(--space-3) 0 0; padding: 0; list-style: none; font-family: var(--font-mono); font-size: 12px; overflow-wrap: anywhere; }
+.pg-events:empty { display: none; }
+
+/* Recordings: one row per run, newest first, with its files. */
+.pg-runs { display: flex; flex-direction: column; max-height: min(480px, 60vh); margin: 0; padding: 0; overflow-y: auto; list-style: none; }
+.pg-run { padding: var(--space-3) 0; border-top: 1px solid var(--line); }
+.pg-run-task { margin: 0; font-size: 15px; line-height: 20px; font-weight: 500; overflow-wrap: anywhere; }
+.pg-run-meta { margin: 2px 0 var(--space-2); font-size: 13px; line-height: 18px; color: var(--ink-2); }
+.pg-run-files { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); font-family: var(--font-mono); font-size: 12px; }
+.pg-run-files a { color: var(--ink); }
+.pg-runs-empty { margin: 0; padding: var(--space-3) 0; border-top: 1px solid var(--line); font-size: 15px; line-height: 22px; color: var(--ink-2); }

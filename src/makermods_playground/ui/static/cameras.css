@@ -1,0 +1,130 @@
+/* Camera panel and the page's camera frames. Tokens only; pg- prefix. */
+
+/* ---------- Panel ---------- */
+/* A floating card under the top bar, aligned with the page column's right edge. It sits over the
+   page (fixed), so nothing beneath it moves; the page stays usable while it is open. */
+.pg-cams-drawer {
+  position: fixed;
+  top: calc(var(--nav-height) + var(--space-5));
+  right: var(--gutter);
+  bottom: var(--gutter);
+  z-index: 9; /* under the top bar's robot menu (10), which drops down over it */
+  display: flex;
+  flex-direction: column;
+  width: 340px;
+  max-width: calc(100vw - 2 * var(--gutter));
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--ground-raised);
+  color: var(--ink);
+  box-shadow: var(--shadow-media);
+  overflow: hidden;
+  opacity: 0;
+  transform: translateX(calc(100% + var(--gutter)));
+  transition: transform var(--duration-base) var(--ease-out), opacity var(--duration-base) var(--ease-out);
+}
+.pg-cams-drawer[hidden] { display: none; }
+.pg-cams-drawer.is-open { opacity: 1; transform: none; }
+
+.pg-cams-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); padding: var(--space-5) var(--space-4) var(--space-4) var(--space-5); border-bottom: 1px solid transparent; transition: border-color var(--duration-fast) var(--ease-out); }
+.pg-cams-head.is-scrolled { border-bottom-color: var(--line); }
+.pg-cams-head-copy { min-width: 0; }
+.pg-cams-title { margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.01em; }
+.pg-cams-note { margin: var(--space-1) 0 0; font-size: 15px; line-height: 22px; color: var(--ink-2); }
+
+.pg-cams-close { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 36px; height: 36px; padding: 0; border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--ink-2); cursor: pointer; transition: background-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out); }
+.pg-cams-close:hover { background: var(--ground-sunken); color: var(--ink); }
+.pg-cams-close:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.pg-cams-foot { display: flex; justify-content: flex-end; padding: var(--space-3) var(--space-5); border-top: 1px solid var(--line); }
+.pg-cams-foot[hidden] { display: none; }
+.pg-cams-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: var(--space-1) var(--space-5) var(--space-5); }
+.pg-cams-section-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: 36px; margin-bottom: var(--space-3); }
+.pg-cams-section-title { margin: 0; color: var(--ink-2); }
+.pg-cams-section-head .hr-btn[hidden] { display: none; }
+.pg-cams-empty-note { margin: 0; padding: var(--space-5) var(--space-2); font-size: 15px; line-height: 22px; color: var(--ink-2); text-align: center; }
+.pg-cams-empty-note[hidden], .pg-cams-grid[hidden] { display: none; }
+
+/* First-open example: a sample camera travels from the panel to each named view. */
+.pg-cams-guide { margin: 0 0 var(--space-5); padding: var(--space-4); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--ground); }
+.pg-cams-guide[hidden] { display: none; }
+.pg-cams-guide h3 { margin: 0 0 var(--space-2); font-size: 15px; line-height: 20px; font-weight: 600; }
+.pg-cams-guide p { margin: 0; color: var(--ink-2); font-size: 13px; line-height: 19px; }
+.pg-cams-guide .pg-cams-guide-alternative { margin: 0 0 var(--space-3); font-size: 12px; line-height: 18px; }
+.pg-cams-guide-demo { position: relative; height: 126px; margin: var(--space-3) 0; pointer-events: none; }
+.pg-cams-guide-source { position: absolute; top: 0; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; padding: 7px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--ground-raised); color: var(--ink-2); font-size: 12px; line-height: 18px; }
+.pg-cams-guide-source .pg-glyph, .pg-cams-guide-ghost .pg-glyph { width: 18px; height: 18px; }
+.pg-cams-guide-arrow { position: absolute; top: 40px; left: 50%; transform: translateX(-50%); color: var(--ink-3); font-size: 22px; }
+.pg-cams-guide-targets { position: absolute; inset: auto 0 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.pg-cams-guide-target { display: grid; place-items: end center; height: 52px; padding-bottom: 5px; box-sizing: border-box; border: 1px dashed var(--ink-3); border-radius: var(--radius-sm); color: var(--ink-2); font-size: 11px; animation: pg-cams-guide-land 9s ease-in-out infinite; }
+.pg-cams-guide-target:nth-child(2) { animation-delay: 3s; }
+.pg-cams-guide-target:nth-child(3) { animation-delay: 6s; }
+.pg-cams-guide-ghost { position: absolute; top: 0; left: calc(50% - 20px); display: grid; place-items: center; width: 40px; height: 32px; border: 1px solid var(--ink); border-radius: var(--radius-sm); background: var(--ground-raised); color: var(--ink); box-shadow: var(--shadow-nav); animation: pg-cams-guide-drag 9s ease-in-out infinite; }
+.pg-cams-guide-ghost::after { content: ""; position: absolute; right: -8px; bottom: -10px; width: 14px; height: 18px; background: var(--ink); clip-path: polygon(0 0, 100% 65%, 58% 68%, 76% 95%, 54% 100%, 36% 73%, 10% 100%); }
+@keyframes pg-cams-guide-drag {
+  0%, 5% { top: 0; left: calc(50% - 20px); opacity: 0; }
+  10% { top: 0; left: calc(50% - 20px); opacity: 1; }
+  22%, 27% { top: 77px; left: calc(16.6667% - 23px); opacity: 1; }
+  31%, 33% { top: 77px; left: calc(16.6667% - 23px); opacity: 0; }
+  34%, 38% { top: 0; left: calc(50% - 20px); opacity: 0; }
+  43% { top: 0; left: calc(50% - 20px); opacity: 1; }
+  55%, 60% { top: 77px; left: calc(50% - 20px); opacity: 1; }
+  64%, 66% { top: 77px; left: calc(50% - 20px); opacity: 0; }
+  67%, 71% { top: 0; left: calc(50% - 20px); opacity: 0; }
+  76% { top: 0; left: calc(50% - 20px); opacity: 1; }
+  88%, 93% { top: 77px; left: calc(83.3333% - 17px); opacity: 1; }
+  97%, 100% { top: 77px; left: calc(83.3333% - 17px); opacity: 0; }
+}
+@keyframes pg-cams-guide-land {
+  0%, 19%, 32%, 100% { border-color: var(--ink-3); background: transparent; }
+  22%, 29% { border-color: var(--ink); background: var(--ground-raised); }
+}
+.pg-cams-guide[hidden] * { animation: none; }
+
+.pg-cams-caption { display: block; margin-top: var(--space-2); overflow: hidden; font-size: 13px; line-height: 18px; font-weight: 500; color: var(--ink-2); text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- Cameras on this computer ---------- */
+/* The list is also the drop zone for unassigning; its dashed edge only shows while a spot is dragged. */
+.pg-cams-list { position: relative; margin: calc(-1 * var(--space-2)); padding: var(--space-2); border: 1.5px dashed transparent; border-radius: var(--radius-md); outline: none; transition: border-color var(--duration-fast) var(--ease-out); }
+.pg-cams-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4) var(--space-3); }
+.pg-cams-card { display: block; min-width: 0; margin: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: grab; }
+.pg-cams-card.is-static { cursor: default; }
+.pg-cams-card-frame { display: block; width: 100%; aspect-ratio: 4 / 3; transition: box-shadow var(--duration-fast) var(--ease-out); }
+.pg-cams-card:hover .pg-cams-caption { color: var(--ink); }
+.pg-cams-card:focus-visible { outline: none; }
+.pg-cams-card:focus-visible .pg-cams-card-frame { outline: 2px solid var(--focus); outline-offset: 3px; }
+.pg-cams-card[aria-pressed="true"] .pg-cams-card-frame { box-shadow: 0 0 0 2px var(--ground-raised), 0 0 0 4px var(--ink); }
+.pg-cams-card[aria-pressed="true"] .pg-cams-caption { color: var(--ink); }
+
+.pg-cams-list-hint { position: absolute; inset: 0; display: none; place-items: center; margin: 0; border-radius: var(--radius-md); background: color-mix(in srgb, var(--ground-raised) 86%, transparent); font-size: 15px; line-height: 22px; font-weight: 500; color: var(--ink); pointer-events: none; }
+.pg-cams-list:has(.pg-cams-empty-note:not([hidden])) { min-height: 96px; }
+
+/* Live: a camera's still placeholder (until the robot connects) keeps its size and sits centred. */
+
+/* ---------- Drag and drop / click to place ---------- */
+.pg-cams-card.is-dragging, .pg-cam-frame.is-dragging { opacity: 0.4; }
+
+/* Unassigning: the list takes a camera dragged from a frame. */
+.pg-cams-drawer[data-drag="slot"] .pg-cams-list { border-color: var(--ink-3); }
+.pg-cams-drawer[data-drag="slot"] .pg-cams-list-hint { display: grid; }
+.pg-cams-drawer[data-drag="slot"] .pg-cams-list.is-over { border-style: solid; border-color: var(--ink); }
+
+/* While the panel is open the page's frames are where cameras go: filled ones drag, and every frame
+   is outlined as a target while a camera is dragged or picked for click-to-place. */
+.pg-stage.is-assigning .pg-cam-frame[draggable="true"] { cursor: grab; }
+.pg-cam-frame { transition: outline-color var(--duration-fast) var(--ease-out); }
+.pg-cam-frame.is-drop-target, .pg-stage[data-picking="true"] .pg-cam-frame { outline: 1.5px dashed var(--ink-3); outline-offset: 4px; }
+.pg-stage[data-picking="true"] .pg-cam-frame { cursor: pointer; }
+.pg-cam-frame.is-drop-target.is-over, .pg-stage[data-picking="true"] .pg-cam-frame:hover { outline: 2px solid var(--ink); }
+.pg-stage[data-picking="true"] .pg-cam-frame:focus-visible { outline: 2px solid var(--focus); }
+
+@media (max-width: 720px) {
+  .pg-cams-drawer { top: calc(var(--nav-height) + var(--space-5)); left: var(--gutter); right: var(--gutter); width: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pg-cams-drawer, .pg-cams-drawer * { transition: none; }
+  .pg-cams-guide * { animation: none; }
+  .pg-cams-guide-ghost { display: none; }
+}

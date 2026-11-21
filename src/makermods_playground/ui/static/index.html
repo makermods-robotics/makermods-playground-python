@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MakerMods Playground</title>
+<link rel="icon" href="/static/favicon-96.png" sizes="96x96" type="image/png">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml" sizes="any">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<script src="/static/theme.js"></script>
+<link rel="stylesheet" href="/static/design-system/tokens.css">
+<link rel="stylesheet" href="/static/design-system/bundle.css">
+<link rel="stylesheet" href="/static/main.css">
+<link rel="stylesheet" href="/static/setup.css">
+<link rel="stylesheet" href="/static/cameras.css">
+<link rel="stylesheet" href="/static/tutorial.css">
+</head>
+<body>
+<div class="pg-shell">
+
+  <header class="pg-bar">
+    <div class="pg-brand">
+      <a class="hr-wordmark pg-wordmark" href="/">
+        <span class="hr-logo-slot"><img class="pg-mark-light" src="/static/assets/logo-mark.png" alt="" width="323" height="245"><img class="pg-mark-dark" src="/static/assets/logo-mark-white.png" alt="" width="323" height="245"></span>MakerMods
+      </a>
+      <a class="pg-powered-by" href="https://dreamlabs.ai/" target="_blank" rel="noopener noreferrer">
+        <span>Powered by</span>
+        <img src="/static/assets/dreamlabs-lockup.svg" alt="Dream Labs" width="272" height="27">
+      </a>
+    </div>
+    <div class="pg-bar-end">
+      <div class="pg-robot" id="robot-corner"></div>
+      <button class="pg-icon-btn" type="button" id="open-recordings" aria-haspopup="dialog" aria-label="Recordings" title="Recordings"></button>
+      <button class="pg-icon-btn" type="button" id="open-settings" aria-haspopup="dialog" aria-label="Settings" title="Settings"></button>
+      <button class="pg-icon-btn" type="button" id="open-cameras" aria-controls="camera-drawer" aria-expanded="false" aria-label="Cameras" title="Cameras"></button>
+    </div>
+  </header>
+
+  <main class="pg-main">
+    <!-- One camera large in the middle (top by default), the other two either side; cameras.js owns each figure's data-slot. -->
+    <section class="pg-cameras" aria-label="Cameras">
+      <div class="pg-stage">
+        <figure class="pg-cam" data-slot="main">
+          <div class="hr-media hr-media-sm pg-cam-frame" data-camera="top">
+            <span class="hr-chip hr-chip-tl">Top</span>
+            <p class="pg-cam-empty">Camera off</p>
+          </div>
+        </figure>
+        <figure class="pg-cam" data-slot="top">
+          <div class="hr-media hr-media-sm pg-cam-frame" data-camera="left">
+            <span class="hr-chip hr-chip-tl">Left</span>
+            <p class="pg-cam-empty">Camera off</p>
+          </div>
+        </figure>
+        <figure class="pg-cam" data-slot="bottom">
+          <div class="hr-media hr-media-sm pg-cam-frame" data-camera="right">
+            <span class="hr-chip hr-chip-tl">Right</span>
+            <p class="pg-cam-empty">Camera off</p>
+          </div>
+        </figure>
+      </div>
+    </section>
+
+    <section class="pg-ask" aria-labelledby="ask-title">
+      <h1 class="heading pg-ask-title" id="ask-title">What should it do?</h1>
+
+      <div class="pg-task" id="task" hidden>
+        <p class="pg-task-text"><span class="eyebrow" id="task-label">Working on</span><span id="task-text"></span></p>
+        <button class="hr-btn hr-btn-secondary hr-btn-sm pg-rest" type="button" id="stop" title="End the run: the arms return to where they started, then torque goes off (Esc)">Stop</button>
+      </div>
+
+      <form class="pg-composer" id="composer">
+        <div class="pg-prompt">
+          <label class="pg-visually-hidden" for="prompt">Task</label>
+          <textarea id="prompt" rows="1" autocomplete="off"></textarea>
+          <span class="pg-prompt-hint" id="prompt-hint" aria-hidden="true"></span>
+        </div>
+        <div class="pg-composer-tools">
+          <div class="pg-select-wrap pg-checkpoint-picker">
+            <select class="pg-select" id="model" aria-label="Model">
+              <option value="beta">Dream1 Beta</option>
+              <option value="flash">Dream1 Beta Flash</option>
+            </select>
+          </div>
+          <label class="pg-limit" title="The run ends after this many seconds">
+            <span class="pg-visually-hidden">Time limit, seconds</span>
+            <input class="pg-limit-input" id="time-limit" type="number" min="1" max="3600" step="1" value="60" inputmode="numeric">
+            <span aria-hidden="true">s</span>
+          </label>
+        </div>
+        <button class="hr-btn hr-btn-primary hr-btn-sm" type="submit" id="run" disabled>Run</button>
+      </form>
+
+      <p class="pg-link" id="link" hidden><span class="pg-link-text" id="link-text"></span><span class="pg-link-actions" id="link-actions"></span></p>
+
+      <details class="pg-live" id="live" hidden>
+        <summary>Arms and events</summary>
+        <div class="pg-arms" id="arms"></div>
+        <ol class="pg-events" id="events"></ol>
+      </details>
+    </section>
+  </main>
+
+</div>
+
+<aside class="pg-drawer" id="camera-drawer" aria-label="Cameras" hidden></aside>
+
+<dialog class="pg-dialog" id="settings" aria-labelledby="settings-title">
+  <form method="dialog" class="pg-dialog-body">
+    <h2 class="title" id="settings-title">Settings</h2>
+    <div class="pg-setting">
+      <div class="pg-setting-copy">
+        <p class="pg-setting-name">Appearance</p>
+        <p class="pg-setting-note">Match your system, or pick one.</p>
+      </div>
+      <div class="hr-tabs" role="group" aria-label="Appearance" id="theme">
+        <button class="hr-tab" type="button" data-theme-choice="system" aria-pressed="false">System</button>
+        <button class="hr-tab" type="button" data-theme-choice="light" aria-pressed="false">Light</button>
+        <button class="hr-tab" type="button" data-theme-choice="dark" aria-pressed="false">Dark</button>
+      </div>
+    </div>
+    <div class="pg-dialog-actions">
+      <button class="hr-btn hr-btn-primary" value="done">Done</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog class="pg-dialog pg-dialog-md" id="recordings" aria-labelledby="recordings-title">
+  <div class="pg-dialog-body">
+    <h2 class="title" id="recordings-title">Recordings</h2>
+    <div class="pg-setting">
+      <div class="pg-setting-copy">
+        <p class="pg-setting-name" id="record-label">Record runs</p>
+        <p class="pg-setting-note" id="record-note">Cameras, joints and the policy's replies, one folder per run.</p>
+      </div>
+      <button class="hr-switch" type="button" role="switch" aria-checked="false" aria-labelledby="record-label" aria-describedby="record-note" id="record" disabled></button>
+    </div>
+    <ol class="pg-runs" id="runs"></ol>
+    <div class="pg-dialog-actions">
+      <button class="hr-btn hr-btn-primary" type="button" id="recordings-done">Done</button>
+    </div>
+  </div>
+</dialog>
+
+<script type="module" src="/static/main.js"></script>
+</body>
+</html>
