@@ -41,10 +41,10 @@ export function initRobots() {
 }
 
 // Other modules follow the provider and the selected robot through the document event "pg:robot", detail
-// { api, robot }: robot is a copy, or null when none is selected.
+// { api, robot, count }: robot is a copy, or null when none is selected; count is how many robots are defined.
 function announce() {
   const robot = selected ? JSON.parse(JSON.stringify(selected)) : null;
-  document.dispatchEvent(new CustomEvent("pg:robot", { detail: { api, robot } }));
+  document.dispatchEvent(new CustomEvent("pg:robot", { detail: { api, robot, count: robots.length } }));
 }
 
 export function setWorking(on) {

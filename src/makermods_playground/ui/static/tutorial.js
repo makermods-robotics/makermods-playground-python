@@ -6,6 +6,7 @@ import { h } from "./ui.js";
 const COMPLETED = "playground-tutorial-complete";
 
 const TITLES = ["Add your first robot", "Create a robot", "Make it yours", "Pick each arm’s adapter"];
+const TITLE_WITH_ROBOTS = "Add another robot"; // the first step's title once a robot is defined
 const COPY = [
   "Open the robot menu. We’ll show you how to connect your arms.",
   "Choose New robot to add your Metal Arms or Maker Arms.",
@@ -30,6 +31,9 @@ export function initTutorial() {
   let step = -1;
   let target = null;
   let highlighted = null;
+  let hasRobots = false;
+  let shown = "";
+  document.addEventListener("pg:robot", (event) => { hasRobots = (event.detail?.count ?? 0) > 0; });
 
   function finish() {
     active = false; cancelAnimationFrame(frame);
@@ -77,10 +81,12 @@ export function initTutorial() {
       const form = find('[data-guide="robot-create"]');
       if (card.parentElement !== form) form.insertBefore(card, form.firstElementChild?.nextSibling ?? null);
     } else if (card.parentElement !== overlay) overlay.append(card);
-    if (current !== step) {
+    const heading = current === 0 && hasRobots ? TITLE_WITH_ROBOTS : TITLES[current];
+    if (current !== step || heading !== shown) {
       step = current;
+      shown = heading;
       count.textContent = `GET CONNECTED · ${step + 1} OF 4`;
-      title.textContent = TITLES[step];
+      title.textContent = heading;
       text.textContent = COPY[step];
       next.textContent = step === 2 ? "Continue" : step === 3 ? "Got it" : "Next";
     }

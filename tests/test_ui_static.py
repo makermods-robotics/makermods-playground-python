@@ -45,3 +45,12 @@ def test_every_api_path_the_page_calls_is_a_route():
             "/api/robots/x/select", "/api/identify", "/api/recordings/x/x", "/api/devices/cameras/x/stream"} <= called
     unknown = sorted(p for p in called if not any(r.path_regex.match(p) for r in routes))
     assert not unknown
+
+
+def test_the_guide_does_not_call_a_robot_the_first_when_robots_exist():
+    robots = (STATIC / "robots.js").read_text(encoding="utf-8")
+    tutorial = (STATIC / "tutorial.js").read_text(encoding="utf-8")
+    assert "count: robots.length" in robots                       # "pg:robot" carries how many robots exist
+    assert re.search(r'addEventListener\("pg:robot".*detail\?\.count', tutorial)
+    assert re.search(r"current === 0 && hasRobots \? TITLE_WITH_ROBOTS", tutorial)
+    assert '"Add your first robot"' in tutorial and 'TITLE_WITH_ROBOTS = "Add another robot"' in tutorial
