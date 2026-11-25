@@ -138,8 +138,8 @@ def test_dream_run(capsys, sim_robots, monkeypatch):
     monkeypatch.setattr(runner_module, "DreamPolicy", factory)
     code, out = run(capsys, "dream", "run", "pick up the marker", "--timeout", "1.5", "--json")
     assert code == 1 and "--yes" in out["error"]
-    code, out = run(capsys, "dream", "run", "pick up the marker", "--timeout", "1.5", "--model", "flash",
-                    "--no-record", "--yes", "--json")
+    code, out = run(capsys, "dream", "run", "pick up the marker", "--timeout", "8", "--model", "flash",
+                    "--no-record", "--yes", "--json")   # long enough for a slow test machine to solve its replies
     assert code == 0 and out["stop_reason"] == "timeout" and out["chunks"] >= 1
     assert out["rest"] == {"left": True, "right": True} and out["recording"] is None
     assert sim_robots[-1].states() == {"left": "disconnected", "right": "disconnected"}

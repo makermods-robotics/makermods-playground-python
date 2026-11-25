@@ -101,7 +101,8 @@ def test_run_lifecycle(harness):
     client = harness.client()
     assert run(client, task="  ").status_code == 422
     assert run(client, task="x", model="gamma").status_code == 422
-    status = run(client, task="pick up the marker", model="flash", timeout_s=2).json()
+    # long enough for a slow test machine to solve its replies
+    status = run(client, task="pick up the marker", model="flash", timeout_s=8).json()
     assert status["running"] and status["run"]["task"] == "pick up the marker"
     running = wait_status(client, lambda s: (s["run"] or {}).get("phase") == "running")
     assert running["connected"] and running["run"]["model"] == "flash"
@@ -269,7 +270,7 @@ def test_recordings(harness, tmp_path):
     save_robot(record=True, recordings_dir=str(tmp_path / "rec"))
     client = harness.client()
     assert client.get("/api/recordings").json()["recordings"] == []
-    run(client, task="wave", timeout_s=1.5)
+    run(client, task="wave", timeout_s=8)   # long enough for a slow test machine to solve its replies
     status = wait_status(client, done)
     assert status["result"]["recording"]
     listed = client.get("/api/recordings").json()

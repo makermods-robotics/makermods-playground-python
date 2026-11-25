@@ -1,3 +1,4 @@
+import _thread
 import http.server
 import math
 import os
@@ -417,8 +418,13 @@ def holding(motors):
 
 
 def interrupt_main_after(seconds):
-    """A real SIGINT to this process after ``seconds`` (a KeyboardInterrupt in the main thread, even inside a join)."""
-    timer = threading.Timer(seconds, os.kill, args=(os.getpid(), signal.SIGINT))
+    """A KeyboardInterrupt in the main thread after ``seconds``: on POSIX a real SIGINT to this process (it lands even
+    inside a join); on Windows, where os.kill(pid, SIGINT) terminates the process, the interpreter's own Ctrl-C (a
+    blocked join there sees it once it returns)."""
+    if os.name == "posix":
+        timer = threading.Timer(seconds, os.kill, args=(os.getpid(), signal.SIGINT))
+    else:
+        timer = threading.Timer(seconds, _thread.interrupt_main)
     timer.start()
     return timer
 
