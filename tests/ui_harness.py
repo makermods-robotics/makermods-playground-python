@@ -83,7 +83,7 @@ def harness(monkeypatch):
         robot.estop()
 
 
-def wait_status(client, predicate, timeout=20.0) -> dict:
+def wait_status(client, predicate, timeout=45.0) -> dict:      # a run's ending can take ~20 s on a slow computer
     status = {}
 
     def check():

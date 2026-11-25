@@ -162,7 +162,7 @@ class DreamRunner:
                 rest = {s: ok for s, ok in self.robot.stop().items() if s in enabled}
             return RunResult(stop_reason=mask_secrets(f"start failed: {e}"), error=True, rest=rest)
         self.started = time.monotonic()
-        reason, error, threads, rest = "error", True, [], None
+        reason, error, started, rest = "error", True, [], None
         try:
             self._start_recording()
             self.servo = Servo(self.robot, self.settings.servo_hz, self._sample, self._limit,
@@ -172,6 +172,7 @@ class DreamRunner:
                        threading.Thread(target=self._cameras, daemon=True, name="policy-cameras")]
             for t in threads:
                 t.start()
+                started.append(t)
             self._set_phase("running")
             self._event("user", self.task)
             try:
@@ -184,14 +185,16 @@ class DreamRunner:
         except Exception as e:
             reason, error = f"error: {type(e).__name__}: {e}", True
         finally:
-            self._freeze()
-            self.done.set()
-            with self.lock:
-                self.schedule.clear()
-            self._event("system", f"run ended: {reason}")
-            for t in threads:
-                t.join(timeout=2.0)
-            rest = self._wind_down(then)
+            try:
+                self._freeze()
+                self.done.set()
+                with self.lock:
+                    self.schedule.clear()
+                self._event("system", f"run ended: {reason}")
+                for t in started:             # a thread that never started is not joined
+                    t.join(timeout=2.0)
+            finally:
+                rest = self._wind_down(then)
         elapsed = time.monotonic() - self.started
         ticks = self.servo.stats.ticks if self.servo else 0
         result = RunResult(

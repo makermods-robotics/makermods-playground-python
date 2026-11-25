@@ -347,3 +347,22 @@ def test_a_run_refused_by_an_arm_held_elsewhere_says_how_to_bring_it_down(arm_ty
     assert any(e["text"] == f"start failed: {line}" for e in runner.state()["events"])
     assert not any(sim.sent(motors["right"], before).values())
     robot.disconnect()
+
+
+def test_a_thread_that_fails_to_start_still_ends_with_the_return_to_rest(monkeypatch):
+    import types
+
+    robot, motors, policy = make("metal", ("left",))
+
+    class NoCameraThread(threading.Thread):
+        def start(self):
+            if self.name == "policy-cameras":
+                raise RuntimeError("can't start new thread")
+            super().start()
+
+    patched = types.SimpleNamespace(**{**vars(threading), "Thread": NoCameraThread})
+    monkeypatch.setattr(runner_module, "threading", patched)
+    result = DreamRunner(robot, "x", settings=robot.settings, policy=policy).run(timeout_s=5.0)
+    assert result.error and "can't start new thread" in result.stop_reason and result.rest == {"left": True}
+    assert robot.states() == {"left": "connected"}
+    robot.disconnect()
