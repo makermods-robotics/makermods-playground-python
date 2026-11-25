@@ -1,12 +1,15 @@
 import http.server
 import math
 import threading
+import time
+import types
 
 import numpy as np
 import pytest
 import sim
 
 from makermods_playground.core import config
+from makermods_playground.core import robot as robot_module
 from makermods_playground.core.robot import Robot
 
 
@@ -153,6 +156,103 @@ def test_disconnect_reports_an_arm_left_energized_by_an_earlier_program():
     robot, _ = sim.sim_robot("metal", sides=("left",), cameras=())
     robot.connect()
     assert robot.torque() == {"left": "off"} and robot.disconnect() == {"left": "released"}
+
+
+REACH = {"metal": [0.0, -2.1, 1.4, 0.15, 0.0, 0.0],                  # low forward reaches, tool near the table
+         "maker": [0.212, -2.213, 2.249, -1.004, 0.153, -0.384]}
+
+
+def at_rest(arm_type, sides=("left", "right")):
+    """A simulated robot whose arms start folded at the profile's rest pose, as real arms at rest do."""
+    rest = sim.rest_pose(arm_type)
+    robot, motors = sim.sim_robot(arm_type, sides=sides, cameras=(), start=rest)
+    robot.motors = motors
+    robot.connect()
+    robot.enable()
+    for side in sides:
+        assert robot.arms[side].move_to(REACH[arm_type] + [rest[6]], speed=2.0, timeout=30)
+    return robot
+
+
+def stop_watching_heights(robot):
+    """robot.stop() while sampling each tool point's height: (result, {side: (start, highest, rest pose) m})."""
+    sides = robot.sides
+    heights, done = {s: [] for s in sides}, threading.Event()
+
+    def watch():
+        while not done.is_set():
+            for s in sides:
+                heights[s].append(robot.arms[s].ee_pose()[0][2])
+            done.wait(0.01)
+
+    thread = threading.Thread(target=watch, daemon=True)
+    thread.start()
+    time.sleep(0.05)
+    try:
+        result = robot.stop()
+    finally:
+        done.set()
+        thread.join()
+    rest = sim.rest_pose(robot.arm_type)
+    return result, {s: (heights[s][0], max(heights[s]), robot.tool_pose(s, rest)[2, 3]) for s in sides}
+
+
+@pytest.mark.parametrize("arm_type", ["metal", "maker"])
+def test_the_end_of_a_run_keeps_the_tool_low_and_comes_home_to_rest(arm_type):
+    robot = at_rest(arm_type)
+    try:
+        result, heights = stop_watching_heights(robot)
+        assert result == {"left": True, "right": True} and robot.torque() == {"left": "off", "right": "off"}
+        for side, (start, peak, rest) in heights.items():
+            assert peak <= max(start, rest) + 0.02, (side, start, peak, rest)    # a joint-space return: +10 cm
+            np.testing.assert_allclose(robot.motors[side].positions[:6], sim.rest_pose(robot.arm_type)[:6],
+                                       atol=robot.arms[side].config.rest_settle)
+        assert robot.last_retract == {"left": "done", "right": "done"}
+    finally:
+        robot.estop()
+        robot.disconnect()
+
+
+def test_a_refused_retract_goes_straight_to_the_joint_return(monkeypatch):
+    robot = at_rest("metal")
+    off = types.SimpleNamespace(q=[0.0] * 6, ok=False, pos_err=0.5, rot_err=0.0, iters=1)
+    monkeypatch.setattr(robot.arms["left"].chain, "ik", lambda *a, **k: off)
+    try:
+        assert robot.stop() == {"left": True, "right": True}
+        assert robot.last_retract["left"].startswith("refused") and robot.last_retract["right"] == "done"
+    finally:
+        robot.estop()
+        robot.disconnect()
+
+
+def test_the_retract_never_waits_past_its_time_limit(monkeypatch):
+    robot = at_rest("maker", sides=("left",))
+    stuck = threading.Event()
+    monkeypatch.setattr(robot_module, "RETRACT_LIMIT_S", 1.0)
+    monkeypatch.setattr(robot.arms["left"].chain, "ik", lambda *a, **k: stuck.wait(60))   # a solve that hangs
+    try:
+        started = time.monotonic()
+        assert robot.retract() == {"left": "ended early: not done within 1 s"}
+        assert time.monotonic() - started < 2.0
+        assert robot.stop() == {"left": True} and robot.torque() == {"left": "off"}
+    finally:
+        stuck.set()
+        robot.estop()
+        robot.disconnect()
+
+
+def test_a_warm_motor_skips_or_ends_the_retract():
+    robot = at_rest("metal")
+    try:
+        robot.motors["left"].set_temperature("shoulder_lift", 75.0)
+        assert sim.wait_until(lambda: robot.arms["left"].get_temperatures()[1] == 75.0)
+        threading.Timer(0.5, robot.motors["right"].set_temperature, args=("elbow_flex", 72.0)).start()
+        assert robot.stop() == {"left": True, "right": True}
+        assert robot.last_retract == {"left": "skipped: shoulder_lift at 75 °C",
+                                      "right": "ended early: elbow_flex at 72 °C"}
+    finally:
+        robot.estop()
+        robot.disconnect()
 
 
 def test_an_arm_enabled_away_from_rest_comes_home_to_the_profile_rest_pose():

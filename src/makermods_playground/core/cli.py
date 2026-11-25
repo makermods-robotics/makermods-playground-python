@@ -112,6 +112,9 @@ def finish(robot: Robot, then: str, say=print) -> dict:
                                "still hold")
         return {"then": "release", "released": released}
     rest = robot.stop()
+    for side, what in robot.last_retract.items():
+        if what != "done":
+            say(f"{side}: retract {what}; joint return from where it was")
     torque = close_holding(robot, say)
     if not all(rest.values()):
         raise CommandError("return to rest not verified on " + ", ".join(s for s, ok in rest.items() if not ok)

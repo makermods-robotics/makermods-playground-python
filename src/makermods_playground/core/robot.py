@@ -7,6 +7,12 @@
 
 Joints are the SDK's radians, seven per arm (six joints, then the gripper). The gripper is also given as an opening
 in [0, 1]: 0 closed, 1 fully open.
+
+An arm comes home in two steps (stop(), rest(), disconnect()): first its tool point moves in a straight line to where
+it sits at the rest pose (the retract: low and close to the base), then the SDK's joint return to the rest pose
+verifies arrival before torque goes off. The retract is skipped or cut short, never waited on, when it cannot be
+solved, takes longer than RETRACT_LIMIT_S, or a joint motor reads RETRACT_MAX_TEMP_C or more; the joint return then
+starts from wherever the arm is.
 """
 
 from __future__ import annotations
@@ -24,6 +30,19 @@ from . import config
 from .config import RobotDef
 
 log = logging.getLogger(__name__)
+
+RETRACT_LIMIT_S = 15.0                    # the retract ends by then, wherever the tool is
+RETRACT_SPEED = math.radians(30.0)        # rad/s of the fastest joint, as the SDK's return to rest
+RETRACT_STEP_M = 0.05                     # the line is solved every 5 cm of tool travel
+RETRACT_STEP_ROT = math.radians(15.0)     # and every 15 degrees of tool turn,
+RETRACT_SAG_M = 0.005                     # then halved where the joint move between two poses strays this far,
+RETRACT_FINE_M = 0.01                     # down to 1 cm and 5 degrees
+RETRACT_FINE_ROT = math.radians(5.0)
+RETRACT_TOLERANCE_M = 0.03                # a 1 cm step solved further than this from the line ends the retract,
+RETRACT_JUMP = math.radians(20.0)         # and so does one that moves any joint further than this
+RETRACT_MAX_POSES = 200
+RETRACT_HZ = 50.0                         # joint targets per second while it moves
+RETRACT_MAX_TEMP_C = 70.0                 # a joint motor at this temperature or more skips or ends the retract
 
 
 @dataclass
@@ -53,6 +72,7 @@ class Robot:
         self.cameras = dict(cameras)
         self.group = self.sdk.rig.ArmGroup(self.arms, parallel=len(set(buses)) == len(buses))
         self.sides = [s for s in config.SIDES if s in self.arms]
+        self.last_retract: dict[str, str] = {}    # side -> what the last retract did
         self.rehomed: list[str] = []              # arms enabled away from rest (enable())
 
     @classmethod
@@ -127,20 +147,24 @@ class Robot:
             arm.hold_current_position()
 
     def stop(self) -> dict[str, bool]:
-        """Return every arm to its rest pose (see enable()), then torque off. False where the return could not be
-        verified: that arm keeps holding."""
+        """Bring every enabled arm home (the retract, then the joint return to its rest pose, see enable()), then
+        torque off. False where arrival could not be verified: that arm keeps holding."""
+        self._try_retract()
         return self.group.stop()
 
     def rest(self, cancel: Optional[threading.Event] = None) -> dict[str, bool]:
-        """Each enabled arm in turn to its profile's rest pose (as the SDK's ``rest`` command), verified there, then
-        torque off. Ends at the first arm whose arrival is not verified, or once ``cancel`` is set: that arm and the
-        ones not yet moved keep holding (absent from the result when not tried)."""
+        """Each enabled arm in turn to its profile's rest pose (the retract, then the joint return), verified there,
+        then torque off. Ends at the first arm whose arrival is not verified, or once ``cancel`` is set: that arm and
+        the ones not yet moved keep holding (absent from the result when not tried)."""
         arrived = {}
         for side in self.sides:
             if cancel is not None and cancel.is_set():
                 break
             arm = self.arms[side]
             arm.rest_pose = self.rest_pose(side)
+            self.retract([side], cancel)
+            if cancel is not None and cancel.is_set():
+                break
             arrived[side] = arm.stop()
             if not arrived[side]:
                 break
@@ -160,6 +184,200 @@ class Robot:
         rest = self.rest_pose(side)
         near = max(cfg.rest_settle, getattr(cfg, "rest_window", None) or 0.0)
         return any(j.return_to_rest and not abs(float(v) - r) <= near for j, v, r in zip(cfg.joints, q, rest))
+
+    def retract(self, sides=None, cancel: Optional[threading.Event] = None) -> dict[str, str]:
+        """Move the tool point of each enabled arm (of ``sides``, else all, in parallel) in a straight line to where
+        it sits at the arm's rest pose, turning to that pose's orientation, at RETRACT_SPEED. Never longer than
+        RETRACT_LIMIT_S, and cut short once ``cancel`` is set or a joint motor reads RETRACT_MAX_TEMP_C or more: the
+        arm then holds where it is. The line is solved from the commanded pose with the SDK's IK, a little ahead of
+        the motion; where it has no pose near the line, or needs a joint to jump, the retract ends there. Returns
+        what happened per arm."""
+        sides = [s for s in (sides or self.sides) if self.arms[s].state.value == "enabled"]
+        outcome: dict[str, str] = {}
+        workers: dict[str, tuple[threading.Thread, threading.Event, threading.Lock]] = {}
+        for side in sides:
+            warm = self._warm_motor(side)
+            if warm:
+                outcome[side] = f"skipped: {warm}"
+                continue
+            ending, gate = threading.Event(), threading.Lock()
+            thread = threading.Thread(target=self._retract_arm, args=(side, ending, gate, outcome), daemon=True,
+                                      name=f"retract-{side}")
+            thread.start()
+            workers[side] = (thread, ending, gate)
+        deadline = time.monotonic() + RETRACT_LIMIT_S
+        ended: dict[str, str] = {}
+        while any(thread.is_alive() and side not in ended for side, (thread, _, _) in workers.items()):
+            for side, (thread, ending, gate) in workers.items():
+                if not thread.is_alive() or side in ended:
+                    continue
+                why = (f"not done within {RETRACT_LIMIT_S:g} s" if time.monotonic() >= deadline else
+                       "cancelled" if cancel is not None and cancel.is_set() else self._warm_motor(side))
+                if why:
+                    ended[side] = why
+                    with gate:              # no target of this retract is sent after this
+                        ending.set()
+            time.sleep(0.05)
+        for side, why in ended.items():
+            workers[side][0].join(0.5)
+            outcome.setdefault(side, f"ended early: {why}")
+        for side in sides:
+            log.info("%s: retract %s", side, outcome.get(side, "not run"))
+        self.last_retract = outcome
+        return outcome
+
+    def _try_retract(self) -> None:
+        try:
+            self.retract()
+        except Exception:
+            log.exception("retract failed; returning in joint space")
+
+    def _warm_motor(self, side: str) -> Optional[str]:
+        """"<joint> at N °C" for the first joint motor (the gripper aside) reading RETRACT_MAX_TEMP_C or more."""
+        arm = self.arms[side]
+        for j, t in zip(arm.config.joints, arm.get_temperatures()):
+            if j.return_to_rest and t is not None and math.isfinite(t) and t >= RETRACT_MAX_TEMP_C:
+                return f"{j.label} at {t:.0f} °C"
+        return None
+
+    def _retract_arm(self, side: str, ending: threading.Event, gate: threading.Lock, outcome: dict) -> None:
+        """Send the line as joint targets following the clock (a late wake-up does not slow it) while a second thread
+        solves it ahead: the motion waits at the last pose solved, and a refusal partway leaves the arm there. Each
+        target goes out under ``gate`` and only while ``ending`` is not set; nothing is written once it is."""
+        arm = self.arms[side]
+        try:
+            command = np.asarray(arm.get_commanded_positions(), dtype=float)
+            line = self._retract_line(side, command)
+            if isinstance(line, str):
+                outcome[side] = line
+                return
+            start, tail = line[0], command[len(line[0]):].tolist()
+            path, times, solving = [start], [0.0], {"done": False, "why": None}
+            lock = threading.Lock()
+
+            def solve():
+                poses = self._retract_poses(side, line, ending)
+                try:
+                    while True:
+                        q = next(poses)
+                        with lock:
+                            times.append(times[-1] + float(np.max(np.abs(q - path[-1]))) / RETRACT_SPEED)
+                            path.append(q)
+                except StopIteration as done:
+                    solving["why"] = done.value
+                except Exception as e:
+                    solving["why"] = f"{type(e).__name__}: {e}"
+                finally:
+                    solving["done"] = True
+
+            threading.Thread(target=solve, daemon=True, name=f"retract-solve-{side}").start()
+            clock, last = 0.0, time.monotonic()
+            while True:
+                now = time.monotonic()
+                with lock:
+                    done = solving["done"]
+                    rows, stamps = list(path), list(times)
+                clock, last = min(clock + now - last, stamps[-1]), now
+                if len(rows) > 1:
+                    k = min(int(np.searchsorted(stamps, clock, side="right")) - 1, len(rows) - 2)
+                    span = stamps[k + 1] - stamps[k]
+                    f = min(1.0, max(0.0, (clock - stamps[k]) / span)) if span > 0 else 1.0
+                    q = rows[k] + (rows[k + 1] - rows[k]) * f
+                    with gate:
+                        if ending.is_set():
+                            return
+                        if not arm.move_to(q.tolist() + tail, speed=2 * RETRACT_SPEED, wait=False):
+                            outcome[side] = "ended early: its targets were refused"
+                            return
+                elif ending.is_set():
+                    return
+                if done and clock >= stamps[-1]:
+                    break
+                time.sleep(1.0 / RETRACT_HZ)
+            if solving["why"]:
+                if not ending.is_set():
+                    outcome[side] = (f"{solving['why']} (after {len(rows) - 1} of the poses: held there)"
+                                     if len(rows) > 1 else solving["why"])
+                return
+            settle = time.monotonic() + 2.0
+            while not ending.is_set():
+                here = np.asarray(arm.get_joint_positions()[:len(start)], dtype=float)
+                if float(np.max(np.abs(here - rows[-1]))) <= arm.config.rest_arrived:
+                    outcome[side] = "done"
+                    return
+                if time.monotonic() >= settle:
+                    outcome[side] = "done, not yet settled"
+                    return
+                time.sleep(0.02)
+        except Exception as e:
+            if not ending.is_set():
+                outcome[side] = f"skipped: {type(e).__name__}: {e}"
+
+    def _retract_line(self, side: str, command: np.ndarray):
+        """(start joints, start tool pose, end tool pose, turn) of the straight tool line from the commanded pose to
+        the rest pose's tool pose, or why there is none."""
+        arm = self.arms[side]
+        if arm.rest_pose is None or not arm.config.urdf:
+            return "skipped: no rest pose or no kinematics"
+        chain = arm.chain
+        start = command[:chain.n]
+        rest = np.asarray(arm.rest_pose[:chain.n], dtype=float)
+        if not np.all(np.isfinite(start)):
+            return "skipped: no commanded pose"
+        if float(np.max(np.abs(start - rest))) <= arm.config.rest_settle:
+            return "skipped: already at its rest pose"
+        ik = self.sdk.trajectory_ik.TrajectoryIK.from_config(arm.config, chain=chain)
+        a, b = chain.fk(start), chain.fk(np.clip(rest, ik.lo, ik.hi))
+        return start, a, b, self.sdk.kinematics.rotation_error(b[:3, :3], a[:3, :3])
+
+    def _retract_poses(self, side: str, line, ending: threading.Event):
+        """Yield joint poses along the line, consecutive ones joined by a joint move that keeps the tool near it;
+        returns why it stopped short (None once the line is done or ``ending`` is set)."""
+        arm = self.arms[side]
+        chain = arm.chain
+        start, a, b, turn = line
+        ik = self.sdk.trajectory_ik.TrajectoryIK.from_config(arm.config, chain=chain)
+        lo, hi = np.minimum(ik.lo, start), np.maximum(ik.hi, start)
+        length, angle = float(np.linalg.norm(b[:3, 3] - a[:3, 3])), float(np.linalg.norm(turn))
+        fine = max(length / RETRACT_FINE_M, angle / RETRACT_FINE_ROT)    # fine steps in the whole line
+
+        def pose(s: float) -> np.ndarray:
+            target = np.eye(4)
+            target[:3, 3] = a[:3, 3] + s * (b[:3, 3] - a[:3, 3])
+            target[:3, :3] = _rotation(turn * s) @ a[:3, :3]
+            return target
+
+        def strays(q0, q1) -> bool:
+            """The joint move q0 -> q1 takes the tool further than RETRACT_SAG_M off the chord between its ends."""
+            p0, p1 = chain.fk(q0)[:3, 3], chain.fk(q1)[:3, 3]
+            return any(np.linalg.norm(chain.fk(q0 + f * (q1 - q0))[:3, 3] - (p0 + f * (p1 - p0))) > RETRACT_SAG_M
+                       for f in (0.25, 0.5, 0.75))
+
+        steps = max(2, math.ceil(length / RETRACT_STEP_M), math.ceil(angle / RETRACT_STEP_ROT))
+        s0, q0, todo = 0.0, start, [k / steps for k in range(1, steps + 1)]
+        for _ in range(RETRACT_MAX_POSES):
+            if ending.is_set():
+                return None
+            if not todo:
+                return None
+            s1 = todo[0]
+            coarse = (s1 - s0) * fine > 1.0
+            solved = chain.ik(pose(s1), q0, limits=(lo, hi), max_iters=30 if coarse else 60, tol=1e-3, rot_tol=1e-2,
+                              rot_weight=0.05)        # the position first: the turn only guides the wrist
+            q1 = np.asarray(solved.q, dtype=float)
+            off = solved.pos_err > RETRACT_TOLERANCE_M
+            jump = float(np.max(np.abs(q1 - q0))) > RETRACT_JUMP
+            if coarse and (off or jump or strays(q0, q1)):
+                todo.insert(0, (s0 + s1) / 2)          # solve half the way first
+                continue
+            if off:
+                return (f"refused: no pose within {RETRACT_TOLERANCE_M * 1000:g} mm of the line "
+                        f"({solved.pos_err * 1000:.0f} mm)")
+            if jump:
+                return "refused: the line needs a joint to jump"
+            yield q1
+            s0, q0 = todo.pop(0), q1
+        return f"refused: more than {RETRACT_MAX_POSES} poses"
 
     def release(self) -> dict[str, dict]:
         """Torque off now, verified motor by motor. An arm away from its rest pose drops. A connected arm is
@@ -189,10 +407,11 @@ class Robot:
         return out
 
     def disconnect(self) -> dict[str, str]:
-        """Close cameras and buses. An arm that is still enabled is stopped first; one whose return to rest is not
-        verified is left holding. Returns the SDK's ArmGroup.close() outcome per arm: only "released" is torque off
-        confirmed."""
+        """Close cameras and buses. An arm that is still enabled comes home first (as stop()); one whose return to
+        rest is not verified is left holding. Returns the SDK's ArmGroup.close() outcome per arm: only "released" is
+        torque off confirmed."""
         try:
+            self._try_retract()
             return self.group.close()
         finally:
             self.close_cameras()
@@ -324,3 +543,13 @@ class Robot:
         """The SDK's trajectory IK for one arm (``solver``: numpy, jax or auto = numpy; default from the settings)."""
         arm = self.arms[side]
         return self.sdk.trajectory_ik.from_config(arm.config, chain=arm.chain, solver=solver or self.settings.ik_solver)
+
+
+def _rotation(vector: np.ndarray) -> np.ndarray:
+    """The rotation matrix of a rotation vector (axis * angle, rad)."""
+    angle = float(np.linalg.norm(vector))
+    if angle < 1e-12:
+        return np.eye(3)
+    x, y, z = vector / angle
+    k = np.array([[0.0, -z, y], [z, 0.0, -x], [-y, x, 0.0]])
+    return np.eye(3) + math.sin(angle) * k + (1.0 - math.cos(angle)) * (k @ k)

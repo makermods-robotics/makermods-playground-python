@@ -524,8 +524,9 @@ class DreamRunner:
             log.error("hold failed: %s", e)
 
     def _wind_down(self, then: str) -> Optional[dict]:
-        """``then`` once the run is over: "rest" returns every arm to rest (an arm whose return is not verified keeps
-        holding), "stay" keeps them holding. Returns, for "rest", whether each arm's return was verified."""
+        """``then`` once the run is over: "rest" brings every arm home (Robot.stop(): the tool low and close to the base
+        first, then the joint return; an arm whose return is not verified keeps holding), "stay" keeps them holding.
+        Returns, for "rest", whether each arm's return was verified."""
         if then != "rest":
             return None
         self._set_phase("returning")
@@ -534,6 +535,9 @@ class DreamRunner:
         except Exception as e:
             self._event("system", f"return to rest failed: {type(e).__name__}: {e}")
             rest = {s: state not in ("enabled", "fault") for s, state in self.robot.states().items()}
+        for side, what in self.robot.last_retract.items():
+            if what != "done":
+                self._event("system", f"{side} arm retract {what}; joint return from where it was")
         if not all(rest.values()):
             self._event("system", "return to rest not verified: "
                         + ", ".join(s for s, ok in rest.items() if not ok) + " still holding")
