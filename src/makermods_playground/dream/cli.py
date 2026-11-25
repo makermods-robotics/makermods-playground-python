@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from ..core import config
-from ..core.cli import CommandError, check_stay, close_holding, confirm, emit, progress, signals
+from ..core.cli import CommandError, check_stay, close_holding, confirm, emit, end_after_failure, progress, signals
 from ..core.robot import Robot
 from .client import MODELS, check
 from .replay import RecordedPolicy, load_recording, replay_dry
@@ -45,6 +45,9 @@ def _drive(args, robot: Robot, runner: DreamRunner) -> None:
         robot.connect()
         try:
             result = runner.run(args.timeout, stop, then=args.then)
+        except BaseException:
+            end_after_failure(robot, args.then)
+            raise
         finally:
             if args.then == "stay":
                 robot.detach()

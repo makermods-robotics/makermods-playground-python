@@ -1,5 +1,6 @@
 import json
 import signal
+import sys
 
 import numpy as np
 import pytest
@@ -287,3 +288,49 @@ def test_a_hold_on_a_metal_arm_whose_holder_crashed_names_the_fix(capsys, sim_ro
     assert all(m.enabled for j, m in right.motors.items() if j != "gripper")
     assert not any(e in ("enable", "disable", "clear") or isinstance(e, tuple) and e[0] == "cmd"
                    for m in right.motors.values() for e in m.log)
+
+
+class GoneReader:
+    """A stream whose reader went away."""
+    def write(self, *args):
+        raise BrokenPipeError(32, "Broken pipe")
+
+    def flush(self):
+        raise BrokenPipeError(32, "Broken pipe")
+
+
+def test_a_hold_whose_progress_reader_went_away_still_comes_home(capsys, sim_robots, monkeypatch):
+    monkeypatch.setattr(sys, "stderr", GoneReader())               # --json: progress goes to stderr
+    code, out = run(capsys, "robot", "hold", "--for", "0.2", "--yes", "--json")
+    assert code == 0 and out["then"] == "rest" and out["rest"] == {"left": True, "right": True}
+    robot = sim_robots[-1]
+    assert robot.states() == {"left": "disconnected", "right": "disconnected"}
+    assert not any(m.enabled for s in robot.motors.values() for m in s.motors.values())
+
+
+def test_a_dream_run_whose_output_reader_went_away_still_comes_home(capsys, sim_robots, monkeypatch):
+    def factory(model, sides, timeout_ms, **stand_ins):
+        return sim.FakePolicy(sim_robots[-1], sides)
+
+    monkeypatch.setattr(runner_module, "DreamPolicy", factory)
+    monkeypatch.setattr(sys, "stdout", GoneReader())               # events and the result go to stdout
+    code = cli.main(["dream", "run", "x", "--timeout", "1.0", "--no-record", "--yes"])
+    robot = sim_robots[-1]
+    assert robot.states() == {"left": "disconnected", "right": "disconnected"}
+    assert not any(m.enabled for s in robot.motors.values() for m in s.motors.values())
+    assert code in (0, 1)
+
+
+@pytest.mark.parametrize("value", ["nan", "inf", "-1", "0"])
+def test_a_hold_for_a_time_that_is_not_a_positive_number_is_refused_before_anything(capsys, sim_robots, value):
+    code, out = run(capsys, "robot", "hold", "--for", value, "--yes", "--json")
+    assert code == 1 and "--for must be a positive number of seconds" in out["error"] and not sim_robots
+
+
+def test_a_hold_without_a_time_away_from_rest_says_how_it_ends(capsys, sim_robots):
+    sim_robots.prepare = lambda robot: sim.once_enabled(robot, lambda: signal.raise_signal(signal.SIGTERM))
+    code, out = run(capsys, "robot", "hold", "--yes")                # sim.START: away from the rest pose
+    assert code == 0
+    lines = out.splitlines()
+    assert lines[0] == "holding until Ctrl-C; it will then come home to the rest pose"
+    assert "holding; Ctrl-C ends" in lines

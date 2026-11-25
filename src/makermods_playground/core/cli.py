@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 import signal
 import sys
@@ -76,8 +77,28 @@ def wait(seconds, stop: threading.Event, robot=None) -> None:
 
 
 def progress(args):
-    """Progress text: stdout, or stderr when stdout carries JSON."""
-    return (lambda *parts: print(*parts, file=sys.stderr, flush=True)) if getattr(args, "json", False) else print
+    """Progress text: stdout, or stderr when stdout carries JSON. A reader that went away (a broken pipe, a closed
+    stream) is ignored: reporting never interrupts what the arms are doing or their ending."""
+    to_stderr = getattr(args, "json", False)
+
+    def say(*parts) -> None:
+        try:
+            print(*parts, file=sys.stderr if to_stderr else sys.stdout, flush=True)
+        except (OSError, ValueError):
+            pass
+
+    return say
+
+
+def end_after_failure(robot: Robot, then: str) -> None:
+    """After an error once the arms were enabled: with ``then`` "rest", the verified return of every arm still enabled
+    (an arm not verified keeps holding); then the caller closes the robot holding (close_holding())."""
+    if then != "rest" or not any(state in ("enabled", "fault") for state in robot.states().values()):
+        return
+    try:
+        robot.stop()
+    except Exception:
+        logging.getLogger(__name__).exception("return to rest failed")
 
 
 def check_stay(robot: Robot, then: str) -> None:
@@ -265,6 +286,8 @@ def cmd_status(args) -> None:
 
 
 def cmd_hold(args) -> None:
+    if args.for_s is not None and not (math.isfinite(args.for_s) and args.for_s > 0):
+        raise CommandError(f"--for must be a positive number of seconds, got {args.for_s:g}")
     robot = Robot.load(args.robot)
     check_stay(robot, args.then)
     confirm(args, "Torque on: the arms hold where they are" + (f" for {args.for_s:g} s" if args.for_s else "")
@@ -273,6 +296,9 @@ def cmd_hold(args) -> None:
     with signals() as stop:
         robot.connect(cameras=False)
         try:
+            if args.for_s is None and args.then == "rest" and any(
+                    robot.away_from_rest(side, q) for side, q in robot.joint_positions().items()):
+                say("holding until Ctrl-C; it will then come home to the rest pose")
             robot.enable(cancel=stop)
             for side in robot.rehomed:
                 say(f"{side}: not at its rest pose; it ends at the profile's rest pose, not here")
@@ -280,6 +306,7 @@ def cmd_hold(args) -> None:
             wait(args.for_s, stop, robot)
             faults = {s: f for s, f in robot.faults().items() if f}
         except BaseException:
+            end_after_failure(robot, args.then)
             close_holding(robot, say)
             raise
         out = finish(robot, args.then, say)
