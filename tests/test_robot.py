@@ -317,3 +317,15 @@ def test_a_url_camera_is_read_through_the_sdk(tmp_path):
     finally:
         robot.close_cameras()
         server.shutdown()
+
+
+def test_disconnect_with_nothing_enabled_keeps_what_the_last_retract_did():
+    robot = at_rest("maker", sides=("left",))
+    try:
+        assert robot.stop() == {"left": True} and robot.last_retract["left"] in ("done", "done, not yet settled")
+        kept = dict(robot.last_retract)
+        robot.disconnect()
+        assert robot.last_retract == kept
+    finally:
+        robot.estop()
+        robot.disconnect()

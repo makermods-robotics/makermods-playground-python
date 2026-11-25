@@ -251,3 +251,9 @@ def test_a_return_whose_release_recheck_fails_is_reported_holding(capsys, sim_ro
     robot = sim_robots[-1]
     assert all(m.enabled for m in robot.motors["left"].motors.values() if m is not robot.motors["left"].motor(6))
     assert not any(m.enabled for m in robot.motors["right"].motors.values())
+
+
+def test_a_hold_at_rest_says_nothing_about_a_retract(capsys, sim_robots):
+    sim_robots.options["start"] = sim.rest_pose("metal")
+    code, out = run(capsys, "robot", "hold", "--for", "0.2", "--yes")
+    assert code == 0 and "retract" not in out and out.strip().endswith("done (rest)")

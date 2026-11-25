@@ -43,6 +43,7 @@ RETRACT_JUMP = math.radians(20.0)         # and so does one that moves any joint
 RETRACT_MAX_POSES = 200
 RETRACT_HZ = 50.0                         # joint targets per second while it moves
 RETRACT_MAX_TEMP_C = 70.0                 # a joint motor at this temperature or more skips or ends the retract
+AT_REST = "skipped: already at its rest pose"
 
 
 @dataclass
@@ -193,6 +194,8 @@ class Robot:
         the motion; where it has no pose near the line, or needs a joint to jump, the retract ends there. Returns
         what happened per arm."""
         sides = [s for s in (sides or self.sides) if self.arms[s].state.value == "enabled"]
+        if not sides:
+            return {}                 # nothing enabled: what the last retract did stays readable
         outcome: dict[str, str] = {}
         workers: dict[str, tuple[threading.Thread, threading.Event, threading.Lock]] = {}
         for side in sides:
@@ -225,6 +228,11 @@ class Robot:
             log.info("%s: retract %s", side, outcome.get(side, "not run"))
         self.last_retract = outcome
         return outcome
+
+    def retract_notes(self) -> dict[str, str]:
+        """What the last retract did, per arm, where it is worth saying (it did not run to the end, and the arm was
+        not simply at rest already)."""
+        return {side: what for side, what in self.last_retract.items() if what not in ("done", AT_REST)}
 
     def _try_retract(self) -> None:
         try:
@@ -325,7 +333,7 @@ class Robot:
         if not np.all(np.isfinite(start)):
             return "skipped: no commanded pose"
         if float(np.max(np.abs(start - rest))) <= arm.config.rest_settle:
-            return "skipped: already at its rest pose"
+            return AT_REST
         ik = self.sdk.trajectory_ik.TrajectoryIK.from_config(arm.config, chain=chain)
         a, b = chain.fk(start), chain.fk(np.clip(rest, ik.lo, ik.hi))
         return start, a, b, self.sdk.kinematics.rotation_error(b[:3, :3], a[:3, :3])

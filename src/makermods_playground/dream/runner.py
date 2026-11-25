@@ -535,9 +535,8 @@ class DreamRunner:
         except Exception as e:
             self._event("system", f"return to rest failed: {type(e).__name__}: {e}")
             rest = {s: state not in ("enabled", "fault") for s, state in self.robot.states().items()}
-        for side, what in self.robot.last_retract.items():
-            if what != "done":
-                self._event("system", f"{side} arm retract {what}; joint return from where it was")
+        for side, what in self.robot.retract_notes().items():
+            self._event("system", f"{side} arm retract {what}; joint return from where it was")
         if not all(rest.values()):
             self._event("system", "return to rest not verified: "
                         + ", ".join(s for s, ok in rest.items() if not ok) + " still holding")
