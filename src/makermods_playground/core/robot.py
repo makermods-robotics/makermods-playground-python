@@ -43,6 +43,9 @@ RETRACT_JUMP = math.radians(20.0)         # and so does one that moves any joint
 RETRACT_MAX_POSES = 200
 RETRACT_HZ = 50.0                         # joint targets per second while it moves
 RETRACT_MAX_TEMP_C = 70.0                 # a joint motor at this temperature or more skips or ends the retract
+RETRACT_SETTLE_S = 2.0                    # after the line: the longest wait for the arm to settle
+RETRACT_STILL_S = 0.2                     # it has settled once no joint moved more than RETRACT_STILL in this long
+RETRACT_STILL = math.radians(0.3)
 AT_REST = "skipped: already at its rest pose"
 
 
@@ -307,13 +310,18 @@ class Robot:
                     outcome[side] = (f"{solving['why']} (after {len(rows) - 1} of the poses: held there)"
                                      if len(rows) > 1 else solving["why"])
                 return
-            settle = time.monotonic() + 2.0
+            # Settled once there, or once no joint moves any more: a loaded joint keeps a standing error
+            began, seen = time.monotonic(), []
             while not ending.is_set():
+                now = time.monotonic()
                 here = np.asarray(arm.get_joint_positions()[:len(start)], dtype=float)
-                if float(np.max(np.abs(here - rows[-1]))) <= arm.config.rest_arrived:
+                seen = [(t, q) for t, q in seen if now - t <= RETRACT_STILL_S] + [(now, here)]
+                still = now - began >= RETRACT_STILL_S and seen[0][0] <= now - RETRACT_STILL_S + 0.05 and max(
+                    float(np.max(np.abs(q - here))) for _, q in seen) <= RETRACT_STILL
+                if still or float(np.max(np.abs(here - rows[-1]))) <= arm.config.rest_arrived:
                     outcome[side] = "done"
                     return
-                if time.monotonic() >= settle:
+                if now - began >= RETRACT_SETTLE_S:
                     outcome[side] = "done, not yet settled"
                     return
                 time.sleep(0.02)

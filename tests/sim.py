@@ -166,3 +166,21 @@ def once_enabled(robot, action, timeout=30.0):
         if wait_until(lambda: all(state == "enabled" for state in robot.states().values()), timeout):
             action()
     threading.Thread(target=run, daemon=True).start()
+
+
+def sag(motors, joint, rad):
+    """Make a simulated motor hold ``rad`` short of every position it is commanded to (a loaded joint's standing
+    error)."""
+    m = motors.motor(joint)
+    handle = m.handle
+
+    def sagging(can_id, data):
+        count = len(m.log)
+        replies = handle(can_id, data)
+        commanded = len(m.log) > count and isinstance(m.log[-1], tuple) and m.log[-1][0] == "cmd"
+        if commanded and m.enabled and m.log[-1][1] > 0:
+            m.position -= rad
+            return [m.feedback()]
+        return replies
+
+    m.handle = sagging

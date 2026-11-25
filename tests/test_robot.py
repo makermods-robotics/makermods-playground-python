@@ -329,3 +329,17 @@ def test_disconnect_with_nothing_enabled_keeps_what_the_last_retract_did():
     finally:
         robot.estop()
         robot.disconnect()
+
+
+def test_the_retract_settles_on_a_standing_error_without_waiting_it_out():
+    robot = at_rest("maker", sides=("left",))
+    for joint in ("shoulder_lift", "elbow_flex"):
+        sim.sag(robot.motors["left"], joint, math.radians(3.0))      # past rest_arrived, as a loaded joint holds
+    try:
+        assert robot.stop() == {"left": True}
+        assert robot.last_retract == {"left": "done"}                 # not "done, not yet settled" after 2 s
+        robot.disconnect()
+        assert robot.last_retract == {"left": "done"}                 # disconnect had nothing to retract
+    finally:
+        robot.estop()
+        robot.disconnect()
