@@ -1,5 +1,6 @@
 import json
 import threading
+import time
 
 import dream
 import numpy as np
@@ -366,3 +367,19 @@ def test_a_thread_that_fails_to_start_still_ends_with_the_return_to_rest(monkeyp
     assert result.error and "can't start new thread" in result.stop_reason and result.rest == {"left": True}
     assert robot.states() == {"left": "connected"}
     robot.disconnect()
+
+
+def test_a_run_waits_for_the_control_loops_feedback_after_enable():
+    robot, _, policy = make("metal", ("left",))
+    real, enabled = robot.feedback_ages, []
+    robot.enable = (lambda real_enable: lambda **kw: (real_enable(**kw), enabled.append(time.monotonic())))(robot.enable)
+
+    def ages():                     # as on a slow computer: the enable's own replies are older than the limit at first
+        if enabled and time.monotonic() - enabled[0] < 0.15:
+            return {side: 0.25 for side in robot.sides}
+        return real()
+
+    robot.feedback_ages = ages
+    result = DreamRunner(robot, "x", settings=robot.settings, policy=policy).run(timeout_s=1.0)
+    robot.disconnect()
+    assert result.stop_reason == "timeout" and not result.error

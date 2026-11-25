@@ -43,6 +43,7 @@ CAMERA_HZ = 30.0
 POLICY_FRAME_HZ = 5.0         # the policy's frame window keeps frames at this rate
 PUSH_PERIOD_S = 1.0 / POLICY_FRAME_HZ - 0.5 / CAMERA_HZ   # a camera tick is pushed once this much newer
 EVENTS_KEPT = 100
+FEEDBACK_SETTLE_S = 1.0       # after enable: the longest wait for every joint's feedback to come from the control loop
 log = logging.getLogger(__name__)
 WARMING = "Dream Labs has no live serve for this model yet; try again later"
 
@@ -150,6 +151,7 @@ class DreamRunner:
             self._warm(stop_event)
             if any(s != "enabled" for s in self.robot.states().values()):
                 self.robot.enable(cancel=stop_event)
+            self._await_feedback(stop_event)
         except Exception as e:
             self._event("system", f"start failed: {e}" if isinstance(e, ArmHeld) else
                         f"start failed: {type(e).__name__}: {e}")
@@ -216,6 +218,16 @@ class DreamRunner:
                 self._event("system", f"recording incomplete: {problem}")
         self._set_phase("done")
         return result
+
+    def _await_feedback(self, stop_event: threading.Event) -> None:
+        """Until every joint's feedback is fresh (half the servo's limit), at most FEEDBACK_SETTLE_S. Right after enable
+        a joint's latest reply can be the one its enable got, older than the limit on a slow computer, until the
+        control loop's first ticks answer; the servo would end the run on it before anything was commanded."""
+        deadline = time.monotonic() + FEEDBACK_SETTLE_S
+        while time.monotonic() < deadline and not stop_event.is_set():
+            if max(self.robot.feedback_ages().values(), default=0.0) <= self.settings.feedback_max_age_s / 2:
+                return
+            time.sleep(0.01)
 
     def _dream_policy(self) -> DreamPolicy:
         """The model reads two arms and three views: an arm this robot lacks is reported parked at the pose its
