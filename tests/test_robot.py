@@ -319,18 +319,6 @@ def test_a_url_camera_is_read_through_the_sdk(tmp_path):
         server.shutdown()
 
 
-def test_disconnect_with_nothing_enabled_keeps_what_the_last_retract_did():
-    robot = at_rest("maker", sides=("left",))
-    try:
-        assert robot.stop() == {"left": True} and robot.last_retract["left"] in ("done", "done, not yet settled")
-        kept = dict(robot.last_retract)
-        robot.disconnect()
-        assert robot.last_retract == kept
-    finally:
-        robot.estop()
-        robot.disconnect()
-
-
 def test_the_retract_settles_on_a_standing_error_without_waiting_it_out():
     robot = at_rest("maker", sides=("left",))
     for joint in ("shoulder_lift", "elbow_flex"):
@@ -340,6 +328,38 @@ def test_the_retract_settles_on_a_standing_error_without_waiting_it_out():
         assert robot.last_retract == {"left": "done"}                 # not "done, not yet settled" after 2 s
         robot.disconnect()
         assert robot.last_retract == {"left": "done"}                 # disconnect had nothing to retract
+    finally:
+        robot.estop()
+        robot.disconnect()
+
+
+def test_an_arm_held_by_another_program_is_left_exactly_as_it_is():
+    robot, motors = sim.sim_robot("maker", cameras=())          # sim.START: both arms away from rest
+    robot.connect()
+    sim.refuse_enable(robot.arms["right"])
+    before, at = sim.log_lengths(motors["right"]), list(motors["right"].positions)
+    try:
+        with pytest.raises(robot_module.ArmHeld) as refused:
+            robot.enable()
+        assert str(refused.value) == ("the right arm is held by another program (its motors report torque on); "
+                                      "nothing was sent to it. Bring it down with 'maker-arm rest --port "
+                                      "gs_usb:right', then try again")
+        assert robot.states() == {"left": "connected", "right": "connected"}      # the left one came home, released
+        assert not any(sim.sent(motors["right"], before).values()) and list(motors["right"].positions) == at
+        robot.disconnect()
+        assert not any(sim.sent(motors["right"], before).values())
+    finally:
+        robot.estop()
+        robot.disconnect()
+
+
+def test_disconnect_with_nothing_enabled_keeps_what_the_last_retract_did():
+    robot = at_rest("maker", sides=("left",))
+    try:
+        assert robot.stop() == {"left": True} and robot.last_retract["left"] in ("done", "done, not yet settled")
+        kept = dict(robot.last_retract)
+        robot.disconnect()
+        assert robot.last_retract == kept
     finally:
         robot.estop()
         robot.disconnect()

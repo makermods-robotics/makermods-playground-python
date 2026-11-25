@@ -257,3 +257,18 @@ def test_a_hold_at_rest_says_nothing_about_a_retract(capsys, sim_robots):
     sim_robots.options["start"] = sim.rest_pose("metal")
     code, out = run(capsys, "robot", "hold", "--for", "0.2", "--yes")
     assert code == 0 and "retract" not in out and out.strip().endswith("done (rest)")
+
+
+def test_a_hold_on_an_arm_held_by_another_program_names_the_fix_and_leaves_it(capsys, sim_robots):
+    def prepare(robot):
+        for m in robot.motors["right"].motors.values():
+            m.enabled = True                                    # left holding by another program
+    sim_robots.prepare = prepare
+    code, out = run(capsys, "robot", "hold", "--for", "0.2", "--yes", "--json")
+    assert code == 1 and out["error"].startswith("the right arm is held by another program")
+    assert "'metal-arm rest --port gs_usb:right'" in out["error"] and "\n" not in out["error"]
+    robot = sim_robots[-1]
+    right = robot.motors["right"]
+    assert all(m.enabled for m in right.motors.values())
+    assert not any(e in ("enable", "disable") or isinstance(e, tuple) and e[0] == "cmd"
+                   for m in right.motors.values() for e in m.log)

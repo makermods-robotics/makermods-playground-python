@@ -9,6 +9,7 @@ import sys
 
 from .core import cli as core_cli
 from .core.mask import mask_secrets
+from .core.robot import ArmHeld
 from .dream import cli as dream_cli
 
 
@@ -55,7 +56,8 @@ def main(argv=None) -> int:
     except KeyboardInterrupt:
         return 130
     except Exception as e:
-        text = mask_secrets(str(e) if isinstance(e, core_cli.CommandError) else f"{type(e).__name__}: {e}")
+        plain = isinstance(e, (core_cli.CommandError, ArmHeld))
+        text = mask_secrets(str(e) if plain else f"{type(e).__name__}: {e}")
         if getattr(args, "json", False):
             print(json.dumps({"ok": False, "error": text}))
         else:

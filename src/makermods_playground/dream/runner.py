@@ -27,6 +27,7 @@ from ..core.config import Settings
 from ..core.limits import LimitCounts, Limiter
 from ..core.mask import mask_secrets
 from ..core.recording import RunRecorder, new_folder
+from ..core.robot import ArmHeld
 from ..core.servo import Servo
 from . import decode
 from .client import DreamPolicy, retry_delay, starts_new_session
@@ -150,11 +151,15 @@ class DreamRunner:
             if any(s != "enabled" for s in self.robot.states().values()):
                 self.robot.enable(cancel=stop_event)
         except Exception as e:
-            self._event("system", f"start failed: {type(e).__name__}: {e}")
+            self._event("system", f"start failed: {e}" if isinstance(e, ArmHeld) else
+                        f"start failed: {type(e).__name__}: {e}")
             self._set_phase("done")
             if self.policy is not None:
                 self.policy.close()
-            rest = self.robot.stop() if then == "rest" else None
+            enabled = [s for s, state in self.robot.states().items() if state in ("enabled", "fault")]
+            rest = None
+            if then == "rest" and enabled:     # an arm never enabled here (refused, not reached) is left as it is
+                rest = {s: ok for s, ok in self.robot.stop().items() if s in enabled}
             return RunResult(stop_reason=mask_secrets(f"start failed: {e}"), error=True, rest=rest)
         self.started = time.monotonic()
         reason, error, threads, rest = "error", True, [], None

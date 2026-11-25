@@ -47,6 +47,11 @@ RETRACT_SETTLE_S = 2.0                    # after the line: the longest wait for
 RETRACT_STILL_S = 0.2                     # it has settled once no joint moved more than RETRACT_STILL in this long
 RETRACT_STILL = math.radians(0.3)
 AT_REST = "skipped: already at its rest pose"
+HELD_ELSEWHERE = "already have torque on"     # the SDK's refusal to enable motors that hold for another program
+
+
+class ArmHeld(Exception):
+    """enable() refused an arm whose motors already hold (left holding by another program); nothing was sent to it."""
 
 
 @dataclass
@@ -114,16 +119,50 @@ class Robot:
         (``rehomed`` lists those arms). That holds too for the arms already enabled when another fails: they come home
         before the error is raised."""
         self.rehomed = []
+        held: dict[str, str] = {}
+        sides = {id(arm): side for side, arm in self.arms.items()}
+
+        def enable(arm) -> None:
+            try:
+                arm.enable(cancel=cancel)
+            except Exception as e:
+                if HELD_ELSEWHERE in str(e):
+                    held[sides[id(arm)]] = str(e)
+                raise
+
         try:
-            self.group.each(lambda arm: arm.enable(cancel=cancel))
-        except BaseException:
+            self.group.each(enable)
+        except BaseException as e:
             try:
                 self._aim_home()
-                self.stop()
+                self.stop()           # only arms enabled here move; an arm that was refused is left as it is
             except Exception:
                 log.exception("bringing the enabled arms home failed")
+            if held:
+                side = next(s for s in self.sides if s in held)
+                raise ArmHeld(f"the {side} arm is held by another program (its motors report torque on); nothing "
+                              f"was sent to it. Bring it down with '{self.rest_command(side)}', then try again") from e
             raise
         self._aim_home()
+
+    def rest_command(self, side: str) -> str:
+        """The SDK command that brings this arm down and releases it: by its name in the SDK's rig file when the rig
+        names the same bus, else by its bus."""
+        spec = self.definition.arm_spec(side)
+        cli = f"{self.arm_type}-arm rest"
+        try:
+            rig = self.sdk.rig.Rig.load()
+            for name in rig.arm_names:
+                theirs = rig.spec(name)
+                if (theirs.backend, theirs.address) == (spec.backend, spec.address):
+                    return f"{cli} --arm {name}"
+        except Exception:
+            pass
+        if spec.backend == "socketcan":
+            return f"{cli} --backend socketcan --channel {spec.channel or 'can0'}"
+        if spec.port and spec.port.startswith("gs_usb"):
+            return f"{cli} --port {spec.port}"
+        return f"{cli} --backend {spec.backend}" + (f" --port {spec.port}" if spec.port else "")
 
     def _aim_home(self) -> None:
         """Make the profile's rest pose the way home of each enabled arm whose enable pose is away from it."""

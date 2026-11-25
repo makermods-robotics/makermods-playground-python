@@ -184,3 +184,27 @@ def sag(motors, joint, rad):
         return replies
 
     m.handle = sagging
+
+
+def sent(motors, since):
+    """What the host sent each simulated motor after ``since`` ({joint: entries of its log}), reads aside (a RobStride
+    state read is its fault-clear frame, logged "clear": refresh() sends it only to a motor reporting no fault)."""
+    quiet = ("status_query", "dropped", "clear")
+    return {j: [e for e in m.log[since.get(j, 0):] if e not in quiet and not (isinstance(e, tuple) and e[0] == "read")]
+            for j, m in motors.motors.items()}
+
+
+def log_lengths(motors):
+    return {j: len(m.log) for j, m in motors.motors.items()}
+
+
+def refuse_enable(arm):
+    """``arm.enable`` raises the SDK's refusal of motors that already hold, sending nothing (the arm is held by
+    another program)."""
+    errors = importlib.import_module(f"{type(arm).__module__.split('.')[0]}.errors")
+
+    def refuse(*args, **kwargs):
+        raise errors.ConnectError("motors 1 (shoulder_pan), 2 (shoulder_lift) already have torque on; nothing was "
+                                  "sent to them. Take the arm over with attach()")
+
+    arm.enable = refuse
