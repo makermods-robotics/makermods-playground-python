@@ -66,7 +66,7 @@ Every command takes `--json` and `--robot NAME`.
 | `robot list`, `robot show`, `robot remove NAME` | Robot files. |
 | `robot check` | Read-only preflight: motors answer, no faults, temperatures, cameras deliver frames. |
 | `robot status` | Joints, gripper opening, temperatures, faults. Torque unchanged. |
-| `robot hold [--for S] [--then rest\|stay\|release]` | Torque on, holding the pose, until the time, Ctrl-C, SIGTERM or a fault (exit status 1). `stay` is refused before anything is energized when a stiff joint has a motor watchdog. |
+| `robot hold [--for S] [--then rest\|stay\|release]` | Torque on, holding the pose, until the time, Ctrl-C, SIGTERM or a fault (exit status 1). `rest` ends at the rest pose (an arm started away from it at the profile's rest pose, and the command says so). `stay` is refused before anything is energized when a stiff joint has a motor watchdog. |
 | `robot rest` | Each arm in turn to the profile's rest pose, verified there, then torque off. The first arm not verified keeps holding, and so do the ones not yet moved. |
 | `robot release` | Torque off now, confirmed motor by motor; works with a motor fault or a motor that does not answer, and names every motor not confirmed (exit status 1). |
 | `cameras snapshot [--out DIR]`, `cameras stream [--for S]` | One JPEG per camera; frame rates. |
@@ -112,8 +112,9 @@ from another thread.
 
 - **The arms have no brakes.** They drop when torque goes off away from rest. Keep a hardware emergency stop on
   motor power and the workspace clear.
-- **Every run ends the same way:** the arms freeze where they are, then go back to the pose they were enabled at,
-  then torque off. If that return cannot be verified, the arm keeps holding and the command exits with status 1;
+- **Every run ends the same way:** the arms freeze where they are, then go back to the rest pose, then torque off. An
+  arm enabled away from its rest pose ends at the profile's rest pose, as `robot rest` does, never where it was
+  enabled. If that return cannot be verified, the arm keeps holding and the command exits with status 1;
   support it, then `playground robot release --yes`. Where a stiff joint would drop on its motor watchdog, the
   command keeps holding the arm until you type RELEASE. "Torque off" is said only when every motor confirms it.
 - **A fault holds the arm.** The SDK holds the pose on stale feedback, a motor fault or overtemperature (the gripper

@@ -99,7 +99,8 @@ def close_holding(robot: Robot, say=print) -> dict[str, str]:
 
 
 def finish(robot: Robot, then: str, say=print) -> dict:
-    """End a command that enabled the arms: rest (return, then torque off), stay (torque on) or release (off now)."""
+    """End a command that enabled the arms: rest (home to the rest pose, then torque off; see Robot.enable()), stay
+    (torque on) or release (off now)."""
     if then == "stay":
         return {"then": "stay", "holding": robot.detach()}
     if then == "release":
@@ -118,7 +119,8 @@ def finish(robot: Robot, then: str, say=print) -> dict:
     return {"then": "rest", "rest": rest, "torque": torque}
 
 
-ENDINGS = {"rest": "then they return to the pose they were enabled at and torque goes off",
+ENDINGS = {"rest": "then they return to rest (an arm enabled away from its rest pose to the profile's rest pose) and "
+                    "torque goes off",
            "stay": "then the program exits with torque still on: release them with 'playground robot release'",
            "release": "then torque goes off where they are: an arm that is not supported DROPS"}
 
@@ -270,6 +272,8 @@ def cmd_hold(args) -> None:
         robot.connect(cameras=False)
         try:
             robot.enable(cancel=stop)
+            for side in robot.rehomed:
+                say(f"{side}: not at its rest pose; it ends at the profile's rest pose, not here")
             say("holding" + (f" for {args.for_s:g} s" if args.for_s else "; Ctrl-C ends"))
             wait(args.for_s, stop, robot)
             faults = {s: f for s, f in robot.faults().items() if f}

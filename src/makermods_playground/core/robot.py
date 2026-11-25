@@ -11,6 +11,7 @@ in [0, 1]: 0 closed, 1 fully open.
 
 from __future__ import annotations
 
+import logging
 import math
 import threading
 import time
@@ -21,6 +22,8 @@ import numpy as np
 
 from . import config
 from .config import RobotDef
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -50,6 +53,7 @@ class Robot:
         self.cameras = dict(cameras)
         self.group = self.sdk.rig.ArmGroup(self.arms, parallel=len(set(buses)) == len(buses))
         self.sides = [s for s in config.SIDES if s in self.arms]
+        self.rehomed: list[str] = []              # arms enabled away from rest (enable())
 
     @classmethod
     def load(cls, name: Optional[str] = None) -> "Robot":
@@ -78,8 +82,34 @@ class Robot:
                 raise
 
     def enable(self, cancel: Optional[threading.Event] = None) -> None:
-        """Torque on every arm, holding where it is. An arm that fails leaves the others stopped again."""
-        self.group.enable(cancel=cancel)
+        """Torque on every arm, holding where it is. An arm that fails leaves the others stopped again.
+
+        An arm comes home (stop(), disconnect()) to the SDK's rest target for its enable pose only when that pose is
+        at rest: a joint further from the profile's rest pose than the SDK treats as at rest (away_from_rest())
+        makes the profile's rest pose its way home instead, so torque never goes off where it was merely being held
+        (``rehomed`` lists those arms). That holds too for the arms already enabled when another fails: they come home
+        before the error is raised."""
+        self.rehomed = []
+        try:
+            self.group.each(lambda arm: arm.enable(cancel=cancel))
+        except BaseException:
+            try:
+                self._aim_home()
+                self.stop()
+            except Exception:
+                log.exception("bringing the enabled arms home failed")
+            raise
+        self._aim_home()
+
+    def _aim_home(self) -> None:
+        """Make the profile's rest pose the way home of each enabled arm whose enable pose is away from it."""
+        for side in self.sides:
+            arm = self.arms[side]
+            if arm.state.value != "enabled" or arm.rest_pose is None or not self.away_from_rest(side, arm.rest_pose):
+                continue
+            rest = self.rest_pose(side)
+            arm.rest_pose = [r if j.return_to_rest else q for r, q, j in zip(rest, arm.rest_pose, arm.config.joints)]
+            self.rehomed.append(side)
 
     def command(self, targets: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
         """Send joint targets (rad, seven per arm). Returns, per accepted arm, the target as the arm drives toward
@@ -97,12 +127,12 @@ class Robot:
             arm.hold_current_position()
 
     def stop(self) -> dict[str, bool]:
-        """Return every arm to the pose it was enabled at, then torque off. False where the return could not be
+        """Return every arm to its rest pose (see enable()), then torque off. False where the return could not be
         verified: that arm keeps holding."""
         return self.group.stop()
 
     def rest(self, cancel: Optional[threading.Event] = None) -> dict[str, bool]:
-        """Each enabled arm in turn to its profile's rest pose (zeros where it names none), verified there, then
+        """Each enabled arm in turn to its profile's rest pose (as the SDK's ``rest`` command), verified there, then
         torque off. Ends at the first arm whose arrival is not verified, or once ``cancel`` is set: that arm and the
         ones not yet moved keep holding (absent from the result when not tried)."""
         arrived = {}
@@ -110,11 +140,26 @@ class Robot:
             if cancel is not None and cancel.is_set():
                 break
             arm = self.arms[side]
-            arm.rest_pose = list(arm.config.rest_pose or [0.0] * arm.config.n_joints)
+            arm.rest_pose = self.rest_pose(side)
             arrived[side] = arm.stop()
             if not arrived[side]:
                 break
         return arrived
+
+    def rest_pose(self, side: str) -> list[float]:
+        """The profile's rest pose of an arm as the SDK's ``rest`` command drives to it (its rest_pose, else the zero
+        pose, clipped into the joint limits), rad."""
+        cfg = self.arms[side].config
+        return self.sdk.move.pose_goal("rest", cfg, [0.0] * cfg.n_joints)
+
+    def away_from_rest(self, side: str, q) -> bool:
+        """Whether a joint that returns to rest is further from the profile's rest pose than the SDK treats as at
+        rest: its rest window where the profile sets one (inside it the SDK's own return presses toward the
+        support), else what it accepts as arrived (``rest_settle``)."""
+        cfg = self.arms[side].config
+        rest = self.rest_pose(side)
+        near = max(cfg.rest_settle, getattr(cfg, "rest_window", None) or 0.0)
+        return any(j.return_to_rest and not abs(float(v) - r) <= near for j, v, r in zip(cfg.joints, q, rest))
 
     def release(self) -> dict[str, dict]:
         """Torque off now, verified motor by motor. An arm away from its rest pose drops. A connected arm is

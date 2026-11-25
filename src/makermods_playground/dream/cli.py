@@ -27,7 +27,7 @@ def cmd_check(args) -> None:
         raise SystemExit(1)
 
 
-THEN = {"rest": "return to the pose they started at and go torque off",
+THEN = {"rest": "return to rest (an arm started away from its rest pose to the profile's rest pose) and go torque off",
         "stay": "stay holding with torque on after the program exits"}
 
 

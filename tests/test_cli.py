@@ -1,6 +1,7 @@
 import json
 import signal
 
+import numpy as np
 import pytest
 import sim
 from test_config import write_rig
@@ -225,3 +226,28 @@ def test_release_works_on_a_faulted_arm_and_reports_a_missing_motor(capsys, sim_
     sim_robots.prepare = lambda robot: robot.motors["right"].offline("wrist_roll")
     code, out = run(capsys, "robot", "release", "--yes", "--json")
     assert code == 1 and out["released"]["right"]["missing"] == ["wrist_roll"] and out["released"]["left"]["ok"]
+
+
+def test_a_hold_started_away_from_rest_ends_at_the_profile_rest_pose(capsys, sim_robots):
+    code, out = run(capsys, "robot", "hold", "--for", "0.2", "--yes")      # sim.START: away from the rest pose
+    robot = sim_robots[-1]
+    for side in robot.sides:
+        np.testing.assert_allclose(robot.motors[side].positions[:6], sim.rest_pose(robot.arm_type)[:6],
+                                   atol=robot.arms[side].config.rest_settle)
+    assert code == 0 and "left: not at its rest pose; it ends at the profile's rest pose, not here" in out
+    assert robot.states() == {"left": "disconnected", "right": "disconnected"}
+    assert not any(m.enabled for s in robot.motors.values() for m in s.motors.values())
+
+
+def test_a_return_whose_release_recheck_fails_is_reported_holding(capsys, sim_robots, monkeypatch):
+    def prepare(robot):
+        left = robot.arms["left"]
+        real = left._release_if_still
+        left._release_if_still = lambda include, rest: False if left is robot.arms["left"] else real(include, rest)
+
+    sim_robots.prepare = prepare
+    code, out = run(capsys, "robot", "hold", "--for", "0.2", "--yes", "--json")
+    assert code == 1 and "still holding" in out["error"] and "left" in out["error"]
+    robot = sim_robots[-1]
+    assert all(m.enabled for m in robot.motors["left"].motors.values() if m is not robot.motors["left"].motor(6))
+    assert not any(m.enabled for m in robot.motors["right"].motors.values())

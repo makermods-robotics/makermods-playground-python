@@ -21,8 +21,7 @@ def make(arm_type="metal", sides=("left", "right"), record=False, tmp_path=None,
 
 @pytest.mark.parametrize("arm_type, sides", [("metal", ("left", "right")), ("maker", ("right",))])
 def test_timeout_run_returns_to_rest(arm_type, sides):
-    robot, _, policy = make(arm_type, sides)
-    start = robot.joint_positions()
+    robot, motors, policy = make(arm_type, sides)
     runner = DreamRunner(robot, "pick up the marker", settings=robot.settings, policy=policy)
     result = runner.run(timeout_s=2.0)
     robot.disconnect()
@@ -35,7 +34,9 @@ def test_timeout_run_returns_to_rest(arm_type, sides):
     assert result.pacing == "async" and result.session_ids == ["sess-1"]
     for s in sides:
         assert policy.observations[0][s]["tool"].shape == (4, 4)
-        np.testing.assert_allclose(robot.joint_positions()[s][:6], start[s][:6], atol=0.05)
+        # enabled away from rest (sim.START): home is the profile's rest pose, never where it was enabled
+        np.testing.assert_allclose(motors[s].positions[:6], sim.rest_pose(arm_type)[:6],
+                                   atol=robot.arms[s].config.rest_settle)
     state = runner.state()
     assert state["phase"] == "done" and any(e["text"].startswith("run ended") for e in state["events"])
 

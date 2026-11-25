@@ -125,8 +125,8 @@ class DreamRunner:
     # ── public ──
     def run(self, timeout_s: float, stop_event: Optional[threading.Event] = None, then: str = "rest") -> RunResult:
         """Enable (if needed), run the task until ``timeout_s``, ``stop_event``, a fault or the policy ends it, then
-        ``then``: "rest" (return to rest, torque off) or "stay" (hold, torque on). Every check runs before the arms
-        are enabled; once they are, any error still ends the same way."""
+        ``then``: "rest" (home to the rest pose, see Robot.enable(), torque off) or "stay" (hold, torque on). Every
+        check runs before the arms are enabled; once they are, any error still ends the same way."""
         if then not in ("rest", "stay"):
             raise ValueError("then must be rest or stay")
         stop_event = stop_event or threading.Event()

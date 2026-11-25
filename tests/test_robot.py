@@ -155,6 +155,40 @@ def test_disconnect_reports_an_arm_left_energized_by_an_earlier_program():
     assert robot.torque() == {"left": "off"} and robot.disconnect() == {"left": "released"}
 
 
+def test_an_arm_enabled_away_from_rest_comes_home_to_the_profile_rest_pose():
+    robot, motors = sim.sim_robot("maker", cameras=())            # sim.START: away from the rest pose
+    robot.connect()
+    near = list(np.asarray(sim.rest_pose("maker")) + np.radians(3.0))
+    robot.arms["right"], motors["right"] = sim.sim_arm("maker", start=near)    # within rest_settle of it
+    robot.group.arms["right"] = robot.arms["right"]
+    robot.arms["right"].connect()
+    try:
+        robot.enable()
+        assert robot.stop() == {"left": True, "right": True}
+        settle = robot.arms["left"].config.rest_settle
+        np.testing.assert_allclose(motors["left"].positions[:6], sim.rest_pose("maker")[:6], atol=settle)
+        np.testing.assert_allclose(motors["right"].positions[:6], near[:6], atol=settle)   # where it rested
+        assert robot.rehomed == ["left"]
+    finally:
+        robot.estop()
+        robot.disconnect()
+
+
+def test_an_arm_enabled_away_from_rest_comes_home_when_the_other_fails_to_enable():
+    robot, motors = sim.sim_robot("metal", cameras=())
+    robot.connect()
+    motors["right"].fault("wrist_flex")
+    try:
+        with pytest.raises(Exception, match="fault"):
+            robot.enable()
+        assert robot.states()["left"] == "connected"          # verified home, torque off
+        np.testing.assert_allclose(motors["left"].positions[:6], sim.rest_pose("metal")[:6],
+                                   atol=robot.arms["left"].config.rest_settle)
+    finally:
+        robot.estop()
+        robot.disconnect()
+
+
 def test_a_url_camera_is_read_through_the_sdk(tmp_path):
     import cv2
     jpeg = cv2.imencode(".jpg", np.full((48, 64, 3), 128, np.uint8))[1].tobytes()

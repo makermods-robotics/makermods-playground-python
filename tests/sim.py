@@ -23,6 +23,12 @@ def sim_arm(arm_type: str, start=None, cfg=None, **options):
     return testing.simulated_arm(cfg, START[arm_type] if start is None else start, params_supported=True, **options)
 
 
+def rest_pose(arm_type: str) -> list:
+    """The shipped profile's rest pose as the SDK's ``rest`` command drives to it (rad, clipped into the limits)."""
+    cfg = config.sdk(arm_type).rig.ArmSpec(backend="gs_usb").config()
+    return importlib.import_module(f"{arm_type}_arm.cli.move").pose_goal("rest", cfg, [0.0] * cfg.n_joints)
+
+
 def frame(image, age=0.0, wall_offset=0.0):
     """An SDK camera Frame captured ``age`` s ago, its wall-clock stamp off by ``wall_offset`` s."""
     return config.sdk("metal").cameras.Frame(image, time.time() - age + wall_offset, time.monotonic() - age)
