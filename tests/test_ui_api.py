@@ -397,3 +397,51 @@ def test_a_camera_frame_is_encoded_once_for_every_viewer(monkeypatch):
     assert len(calls) == 1
     cache.get("top", object())
     assert len(calls) == 2
+
+
+def test_closing_a_preview_that_is_still_opening_waits_until_its_device_is_free(monkeypatch):
+    import threading
+    import time
+
+    from makermods_playground.ui import devices
+
+    events, release = [], threading.Event()
+
+    class Slow:
+        def open(self):
+            events.append("opening")
+            release.wait(10)
+            events.append("opened")
+
+        def close(self):
+            events.append("closed")
+
+    monkeypatch.setattr(devices, "open_camera", lambda camera_id: Slow())
+    previews = devices.Previews()
+    previews.watch("usb:top")
+    while "opening" not in events:
+        time.sleep(0.005)
+    threading.Timer(0.3, release.set).start()
+    previews.blocked = {"usb:top"}
+    previews.close(["usb:top"])                       # as connect() does before the robot opens the camera
+    assert events == ["opening", "opened", "closed"]
+
+
+def test_a_preview_camera_that_cannot_be_made_reports_its_error(monkeypatch):
+    import time
+
+    from makermods_playground.ui import devices
+
+    def refuse(camera_id):
+        raise ValueError(f"not a camera id: {camera_id}")
+
+    monkeypatch.setattr(devices, "open_camera", refuse)
+    previews = devices.Previews()
+    previews.watch("bad")
+    deadline = time.monotonic() + 5.0
+    while previews.error("bad") is None and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert previews.error("bad") == "not a camera id: bad"
+    started = time.monotonic()
+    previews.close(["bad"])
+    assert time.monotonic() - started < 1.0

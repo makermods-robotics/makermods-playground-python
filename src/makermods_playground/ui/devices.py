@@ -11,6 +11,7 @@ from ..core import config
 
 WIGGLE_DEGREES = 15.0
 PREVIEW_IDLE_S = 5.0    # a preview camera closes this long after its last viewer left
+PREVIEW_OPEN_WAIT_S = 15.0   # the longest close() waits for a preview camera that is still being opened
 
 
 def _sdk_module(arm_type: str, name: str):
@@ -75,10 +76,12 @@ class Previews:
         with self.lock:
             entry = self.cameras.get(camera_id)
             if entry is None:
-                entry = self.cameras[camera_id] = {"camera": None, "viewers": 0, "error": None, "opening": False}
+                entry = self.cameras[camera_id] = {"camera": None, "viewers": 0, "error": None, "opening": False,
+                                                   "opened": threading.Event()}
             entry["viewers"] += 1
             if entry["camera"] is None and not entry["opening"] and camera_id not in self.blocked:
                 entry["opening"] = True
+                entry["opened"].clear()
                 threading.Thread(target=self._open, args=(camera_id, entry), daemon=True,
                                  name="camera-preview").start()
 
@@ -106,19 +109,29 @@ class Previews:
         return entry and entry["error"]
 
     def close(self, camera_ids) -> None:
-        """Close these cameras now (the robot is about to open them)."""
+        """Close these cameras now (the robot is about to open them). A camera still being opened holds its device
+        until the open ends, so this waits for that (at most PREVIEW_OPEN_WAIT_S); the opener then closes it."""
         for camera_id in camera_ids:
             with self.lock:
                 entry = self.cameras.pop(camera_id, None)
-            if entry and entry["camera"] is not None:
+                opening = bool(entry and entry["opening"])
+            if opening:
+                entry["opened"].wait(PREVIEW_OPEN_WAIT_S)
+            elif entry and entry["camera"] is not None:
                 entry["camera"].close()
 
     def close_all(self) -> None:
         self.close(list(self.cameras))
 
     def _open(self, camera_id: str, entry: dict) -> None:
-        camera = open_camera(camera_id)
         try:
+            self._open_camera(camera_id, entry)
+        finally:
+            entry["opened"].set()     # the device is free again, or this preview holds it
+
+    def _open_camera(self, camera_id: str, entry: dict) -> None:
+        try:
+            camera = open_camera(camera_id)
             camera.open()
         except Exception as e:
             with self.lock:
