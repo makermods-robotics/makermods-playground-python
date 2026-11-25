@@ -187,9 +187,10 @@ def sag(motors, joint, rad):
 
 
 def sent(motors, since):
-    """What the host sent each simulated motor after ``since`` ({joint: entries of its log}), reads aside (a RobStride
-    state read is its fault-clear frame, logged "clear": refresh() sends it only to a motor reporting no fault)."""
-    quiet = ("status_query", "dropped", "clear")
+    """What the host sent each simulated motor after ``since`` ({joint: entries of its log}), reads aside (on the Maker
+    arm a RobStride state read is its fault-clear frame, logged "clear": refresh() sends it only to a motor reporting
+    no fault; on the Metal arm "clear" is a fault clear and counts)."""
+    quiet = ("status_query", "dropped") + (("clear",) if type(motors).__module__.startswith("maker_arm") else ())
     return {j: [e for e in m.log[since.get(j, 0):] if e not in quiet and not (isinstance(e, tuple) and e[0] == "read")]
             for j, m in motors.motors.items()}
 

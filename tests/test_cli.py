@@ -272,3 +272,18 @@ def test_a_hold_on_an_arm_held_by_another_program_names_the_fix_and_leaves_it(ca
     assert all(m.enabled for m in right.motors.values())
     assert not any(e in ("enable", "disable") or isinstance(e, tuple) and e[0] == "cmd"
                    for m in right.motors.values() for e in m.log)
+
+
+def test_a_hold_on_a_metal_arm_whose_holder_crashed_names_the_fix(capsys, sim_robots):
+    def prepare(robot):
+        for m in robot.motors["right"].motors.values():
+            m.enabled = True
+        robot.motors["right"].watchdog_timeout("gripper")      # the gripper let go once its holder died
+    sim_robots.prepare = prepare
+    code, out = run(capsys, "robot", "hold", "--for", "0.2", "--yes", "--json")
+    assert code == 1 and out["error"].startswith("the right arm: ") and "\n" not in out["error"]
+    assert out["error"].endswith("bring it down with 'metal-arm rest --port gs_usb:right' and try again")
+    right = sim_robots[-1].motors["right"]
+    assert all(m.enabled for j, m in right.motors.items() if j != "gripper")
+    assert not any(e in ("enable", "disable", "clear") or isinstance(e, tuple) and e[0] == "cmd"
+                   for m in right.motors.values() for e in m.log)

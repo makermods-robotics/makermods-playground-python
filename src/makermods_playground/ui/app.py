@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from ..core import config
+from ..core.robot import ArmHeld
 from ..dream.client import MODELS
 from . import devices
 from .session import HEARTBEAT_S, Busy, Session
@@ -156,6 +157,10 @@ def create_app(robot: Optional[str] = None, hosts=(), heartbeat_s: float = HEART
 
     @app.exception_handler(Busy)
     async def busy(request, exc):
+        return JSONResponse({"detail": str(exc)}, status_code=409)
+
+    @app.exception_handler(ArmHeld)
+    async def arm_held(request, exc):
         return JSONResponse({"detail": str(exc)}, status_code=409)
 
     @app.exception_handler(config.ConfigError)

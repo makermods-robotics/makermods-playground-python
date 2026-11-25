@@ -30,6 +30,7 @@ class Harness:
         self.policies: list[sim.FakePolicy] = []
         self.policy_kwargs: dict = {}
         self.sim_options: dict = {}   # for every simulated motor of the robots loaded next
+        self.prepare = None           # prepare(robot) on each robot loaded next, before it connects
         harness = self
 
         def load(cls, name=None):
@@ -39,6 +40,8 @@ class Harness:
                                           settings=definition.settings, **harness.sim_options)
             robot.definition = definition
             robot.motors = motors
+            if harness.prepare:
+                harness.prepare(robot)
             harness.robots.append(robot)
             return robot
 

@@ -365,3 +365,41 @@ def test_disconnect_with_nothing_enabled_keeps_what_the_last_retract_did():
     finally:
         robot.estop()
         robot.disconnect()
+
+
+def crashed_holder(robot, motors, arm_type):
+    """Make the right arm one a crashed program left: Metal held, then its gripper's watchdog let go and latched its
+    state; Maker away from rest with its motors left in another control mode."""
+    if arm_type == "metal":
+        for m in motors["right"].motors.values():
+            m.enabled = True
+        motors["right"].watchdog_timeout("gripper")
+    else:
+        arm, motors["right"] = sim.sim_arm("maker", run_mode=1)
+        robot.arms["right"] = robot.group.arms["right"] = arm
+
+
+@pytest.mark.parametrize("arm_type", ["metal", "maker"])
+def test_a_connect_failure_on_an_arm_a_crashed_program_left_names_the_way_down(arm_type):
+    robot, motors = sim.sim_robot(arm_type, cameras=())
+    crashed_holder(robot, motors, arm_type)
+    before, at = sim.log_lengths(motors["right"]), list(motors["right"].positions)
+    with pytest.raises(robot_module.ArmHeld) as failed:
+        robot.connect()
+    text = str(failed.value)
+    assert text.startswith("the right arm: ") and "\n" not in text
+    assert text.endswith(f"If a program crashed and left this arm holding, bring it down with '{arm_type}-arm rest "
+                         "--port gs_usb:right' and try again")
+    assert not any(sim.sent(motors["right"], before).values()) and list(motors["right"].positions) == at
+    assert robot.states() == {"left": "disconnected", "right": "disconnected"}
+    if arm_type == "metal":
+        assert all(m.enabled for j, m in motors["right"].motors.items() if j != "gripper")    # still holding
+
+
+def test_a_connect_failure_of_an_arm_at_rest_stays_the_sdks_own_error():
+    robot, motors = sim.sim_robot("maker", cameras=())
+    arm, motors["right"] = sim.sim_arm("maker", start=sim.rest_pose("maker"), run_mode=1)
+    robot.arms["right"] = robot.group.arms["right"] = arm
+    with pytest.raises(robot.sdk.errors.ConnectError) as failed:
+        robot.connect()
+    assert not isinstance(failed.value, robot_module.ArmHeld) and "crashed" not in str(failed.value)

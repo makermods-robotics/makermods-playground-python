@@ -50,7 +50,8 @@ AT_REST = "skipped: already at its rest pose"
 
 
 class ArmHeld(Exception):
-    """enable() refused an arm whose motors already hold (left holding by another program); nothing was sent to it."""
+    """connect() or enable() failed on an arm that a program which crashed may have left holding (see
+    Robot.held_hint()); the message names the SDK command that brings it down. Nothing more was sent to that arm."""
 
 
 @dataclass
@@ -98,8 +99,26 @@ class Robot:
 
     # ── lifecycle ──
     def connect(self, cameras: bool = True) -> None:
-        """Find every motor (torque stays off) and start the cameras."""
-        self.group.connect()
+        """Find every motor (torque stays off) and start the cameras. An arm that fails as one a crashed program left
+        holding may (held_hint()) raises ArmHeld; the buses close without anything more sent to it."""
+        failed: dict[str, Exception] = {}
+        sides = {id(arm): side for side, arm in self.arms.items()}
+
+        def connect_arm(arm) -> None:
+            try:
+                arm.connect()
+            except self.sdk.errors.ConnectError as e:
+                failed[sides[id(arm)]] = e
+                raise
+
+        try:
+            self.group.each(connect_arm)
+        except BaseException as e:
+            hints = [hint for side in self.sides if side in failed and (hint := self.held_hint(side, failed[side]))]
+            self.group.disconnect()           # closes the buses; torque is never changed by it here
+            if hints:
+                raise ArmHeld(hints[0]) from e
+            raise
         if cameras:
             try:
                 for cam in self.cameras.values():
@@ -118,14 +137,14 @@ class Robot:
         (``rehomed`` lists those arms). That holds too for the arms already enabled when another fails: they come home
         before the error is raised."""
         self.rehomed = []
-        held: dict[str, str] = {}
+        failed: dict[str, Exception] = {}
         sides = {id(arm): side for side, arm in self.arms.items()}
 
         def enable(arm) -> None:
             try:
                 arm.enable(cancel=cancel)
-            except self.sdk.errors.HeldByAnotherProgram as e:
-                held[sides[id(arm)]] = str(e)
+            except self.sdk.errors.ConnectError as e:
+                failed[sides[id(arm)]] = e
                 raise
 
         try:
@@ -136,12 +155,30 @@ class Robot:
                 self.stop()           # only arms enabled here move; an arm that was refused is left as it is
             except Exception:
                 log.exception("bringing the enabled arms home failed")
-            if held:
-                side = next(s for s in self.sides if s in held)
-                raise ArmHeld(f"the {side} arm is held by another program; nothing was sent to it. Bring it down "
-                              f"with '{self.rest_command(side)}', then try again") from e
+            hints = [hint for side in self.sides if side in failed and (hint := self.held_hint(side, failed[side]))]
+            if hints:
+                raise ArmHeld(hints[0]) from e
             raise
         self._aim_home()
+
+    def held_hint(self, side: str, error: Exception) -> Optional[str]:
+        """One line for a connect() or enable() ConnectError of an arm that a crashed program may have left holding,
+        naming the SDK command that brings it down, or None when nothing points that way. It does: the SDK's
+        HeldByAnotherProgram refusal; a release-on-fault joint (the gripper) reporting only what its motor watchdog
+        leaves once commands stop (Motor.watchdog_released); or joint readings away from the rest pose."""
+        arm = self.arms[side]
+        command = self.rest_command(side)
+        if isinstance(error, self.sdk.errors.HeldByAnotherProgram):
+            return (f"the {side} arm is held by another program; nothing was sent to it. Bring it down with "
+                    f"'{command}', then try again")
+        joints = arm.config.joints
+        released = any(j.release_on_fault and m.watchdog_released for m, j in zip(arm.motors, joints))
+        q = arm.get_joint_positions()
+        known = all(math.isfinite(v) for v, j in zip(q, joints) if j.return_to_rest)
+        if released or (known and self.away_from_rest(side, q)):
+            return (f"the {side} arm: {error}. If a program crashed and left this arm holding, bring it down with "
+                    f"'{command}' and try again")
+        return None
 
     def rest_command(self, side: str) -> str:
         """The SDK command that brings this arm down and releases it: by its name in the SDK's rig file when the rig

@@ -21,7 +21,7 @@ from typing import Optional
 from ..core import cli as core_cli
 from ..core import config
 from ..core.mask import mask_secrets
-from ..core.robot import Robot
+from ..core.robot import ArmHeld, Robot
 from ..dream.runner import DreamRunner
 from . import devices
 
@@ -254,7 +254,7 @@ class Session:
             result = self.runner.run(timeout_s, stop, then="rest")
             self.result = result.to_json()
         except Exception as e:
-            text = mask_secrets(f"{type(e).__name__}: {e}")
+            text = mask_secrets(str(e) if isinstance(e, ArmHeld) else f"{type(e).__name__}: {e}")
             self.result = {"stop_reason": text, "error": True}
             self._event(f"run failed: {text}")
         finally:

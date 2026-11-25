@@ -445,3 +445,21 @@ def test_a_preview_camera_that_cannot_be_made_reports_its_error(monkeypatch):
     started = time.monotonic()
     previews.close(["bad"])
     assert time.monotonic() - started < 1.0
+
+
+def test_a_metal_arm_whose_holder_crashed_is_named_with_the_way_down(harness):
+    save_robot()
+
+    def crashed(robot):
+        for m in robot.motors["right"].motors.values():
+            m.enabled = True
+        robot.motors["right"].watchdog_timeout("gripper")
+    harness.prepare = crashed
+    client = harness.client()
+    hint = "If a program crashed and left this arm holding, bring it down with 'metal-arm rest --port gs_usb:B'"
+    r = client.post("/api/connect")
+    assert r.status_code == 409 and r.json()["detail"].startswith("the right arm: ") and hint in r.json()["detail"]
+    assert run(client, task="wave", timeout_s=1.0).status_code == 200
+    status = wait_status(client, done)
+    assert status["result"]["error"] and status["result"]["stop_reason"].startswith("the right arm: ")
+    assert hint in status["result"]["stop_reason"]
