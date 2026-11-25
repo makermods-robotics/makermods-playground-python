@@ -119,13 +119,14 @@ class RobotDef:
 
 
 def sdk(arm_type: str) -> SimpleNamespace:
-    """The SDK modules for an arm type: rig, arm, bus, cameras, trajectory_ik, kinematics, the mock CAN backend and
-    the CLI's helpers (``safety``, ``common``, ``move``)."""
+    """The SDK modules for an arm type: rig, arm, bus, cameras, trajectory_ik, kinematics, errors, the mock CAN backend
+    and the CLI's helpers (``safety``, ``common``, ``move``)."""
     if arm_type not in ARM_TYPES:
         raise ConfigError(f"unknown arm type {arm_type!r}")
     package = f"{arm_type}_arm"
     modules = {m: importlib.import_module(f"{package}.{m}")
                for m in ("rig", "arm", "bus", "cameras", "trajectory_ik", "kinematics")}
+    modules["errors"] = importlib.import_module(f"{package}.errors")
     modules["mock"] = importlib.import_module(f"{package}.transport.mock")
     modules["safety"] = importlib.import_module(f"{package}.cli.safety")
     modules["common"] = importlib.import_module(f"{package}.cli.common")

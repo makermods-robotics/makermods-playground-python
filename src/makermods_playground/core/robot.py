@@ -47,7 +47,6 @@ RETRACT_SETTLE_S = 2.0                    # after the line: the longest wait for
 RETRACT_STILL_S = 0.2                     # it has settled once no joint moved more than RETRACT_STILL in this long
 RETRACT_STILL = math.radians(0.3)
 AT_REST = "skipped: already at its rest pose"
-HELD_ELSEWHERE = "already have torque on"     # the SDK's refusal to enable motors that hold for another program
 
 
 class ArmHeld(Exception):
@@ -125,9 +124,8 @@ class Robot:
         def enable(arm) -> None:
             try:
                 arm.enable(cancel=cancel)
-            except Exception as e:
-                if HELD_ELSEWHERE in str(e):
-                    held[sides[id(arm)]] = str(e)
+            except self.sdk.errors.HeldByAnotherProgram as e:
+                held[sides[id(arm)]] = str(e)
                 raise
 
         try:
@@ -140,8 +138,8 @@ class Robot:
                 log.exception("bringing the enabled arms home failed")
             if held:
                 side = next(s for s in self.sides if s in held)
-                raise ArmHeld(f"the {side} arm is held by another program (its motors report torque on); nothing "
-                              f"was sent to it. Bring it down with '{self.rest_command(side)}', then try again") from e
+                raise ArmHeld(f"the {side} arm is held by another program; nothing was sent to it. Bring it down "
+                              f"with '{self.rest_command(side)}', then try again") from e
             raise
         self._aim_home()
 

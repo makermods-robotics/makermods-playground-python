@@ -330,14 +330,19 @@ def test_a_video_failure_keeps_the_motion_log_and_the_run_error(tmp_path):
     assert len((tmp_path / "motion.csv").read_text().splitlines()) == 1 + 5
 
 
-def test_a_run_refused_by_an_arm_held_elsewhere_says_how_to_bring_it_down():
-    robot, motors, policy = make("maker", ("left", "right"))
-    sim.refuse_enable(robot.arms["right"])
+@pytest.mark.parametrize("arm_type", ["metal", "maker"])
+def test_a_run_refused_by_an_arm_held_elsewhere_says_how_to_bring_it_down(arm_type):
+    settings = Settings(record=False)
+    robot, motors = sim.sim_robot(arm_type, settings=settings)
+    arm, motors["right"] = sim.held_arm(arm_type)
+    robot.arms["right"] = robot.group.arms["right"] = arm
+    robot.connect()
+    policy = sim.FakePolicy(robot, robot.sides)
     before = sim.log_lengths(motors["right"])
     runner = DreamRunner(robot, "x", settings=robot.settings, policy=policy)
     result = runner.run(timeout_s=2.0)
-    line = ("the right arm is held by another program (its motors report torque on); nothing was sent to it. "
-            "Bring it down with 'maker-arm rest --port gs_usb:right', then try again")
+    line = (f"the right arm is held by another program; nothing was sent to it. Bring it down with "
+            f"'{arm_type}-arm rest --port gs_usb:right', then try again")
     assert result.error and result.stop_reason == f"start failed: {line}" and result.rest is None
     assert any(e["text"] == f"start failed: {line}" for e in runner.state()["events"])
     assert not any(sim.sent(motors["right"], before).values())

@@ -333,17 +333,19 @@ def test_the_retract_settles_on_a_standing_error_without_waiting_it_out():
         robot.disconnect()
 
 
-def test_an_arm_held_by_another_program_is_left_exactly_as_it_is():
-    robot, motors = sim.sim_robot("maker", cameras=())          # sim.START: both arms away from rest
+@pytest.mark.parametrize("arm_type", ["metal", "maker"])
+def test_an_arm_held_by_another_program_is_left_exactly_as_it_is(arm_type):
+    robot, motors = sim.sim_robot(arm_type, cameras=())         # sim.START: both arms away from rest
+    arm, motors["right"] = sim.held_arm(arm_type)
+    robot.arms["right"] = robot.group.arms["right"] = arm
     robot.connect()
-    sim.refuse_enable(robot.arms["right"])
     before, at = sim.log_lengths(motors["right"]), list(motors["right"].positions)
     try:
         with pytest.raises(robot_module.ArmHeld) as refused:
             robot.enable()
-        assert str(refused.value) == ("the right arm is held by another program (its motors report torque on); "
-                                      "nothing was sent to it. Bring it down with 'maker-arm rest --port "
-                                      "gs_usb:right', then try again")
+        assert isinstance(refused.value.__cause__, robot.sdk.errors.HeldByAnotherProgram)
+        assert str(refused.value) == (f"the right arm is held by another program; nothing was sent to it. Bring it "
+                                      f"down with '{arm_type}-arm rest --port gs_usb:right', then try again")
         assert robot.states() == {"left": "connected", "right": "connected"}      # the left one came home, released
         assert not any(sim.sent(motors["right"], before).values()) and list(motors["right"].positions) == at
         robot.disconnect()

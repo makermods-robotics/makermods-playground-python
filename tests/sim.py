@@ -198,13 +198,13 @@ def log_lengths(motors):
     return {j: len(m.log) for j, m in motors.motors.items()}
 
 
-def refuse_enable(arm):
-    """``arm.enable`` raises the SDK's refusal of motors that already hold, sending nothing (the arm is held by
-    another program)."""
-    errors = importlib.import_module(f"{type(arm).__module__.split('.')[0]}.errors")
-
-    def refuse(*args, **kwargs):
-        raise errors.ConnectError("motors 1 (shoulder_pan), 2 (shoulder_lift) already have torque on; nothing was "
-                                  "sent to them. Take the arm over with attach()")
-
-    arm.enable = refuse
+def held_arm(arm_type: str):
+    """(arm, SimulatedMotors) of an arm another program left holding at sim.START, which the SDK's enable() refuses
+    with HeldByAnotherProgram: Metal motors report torque on; Maker motors on old firmware report no torque state
+    but the shoulder is producing torque."""
+    if arm_type == "metal":
+        return sim_arm("metal", enabled=True)
+    testing = importlib.import_module("maker_arm.testing")
+    arm, motors = testing.simulated_arm(None, START["maker"], params_supported=False)
+    motors.motor("shoulder_lift").torque = 2.0
+    return arm, motors
