@@ -45,7 +45,7 @@ arm: metal                                     # metal | maker
 arms:
   left:  {backend: gs_usb, port: "gs_usb:<serial>"}   # the SDK rig's arm fields
   right: {backend: gs_usb, port: "gs_usb:<serial>"}   # optional: a one-arm robot has one side
-cameras: {top: "usb:<path>", left: "usb:<path>", right: "usb:<path>"}
+cameras: {top: "usb:<path>", left: "usb:<path>", right: "url:<http URL>"}   # the SDK's camera ids
 settings: {servo_hz: 40}                       # optional
 ```
 

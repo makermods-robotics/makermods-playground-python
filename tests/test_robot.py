@@ -1,3 +1,4 @@
+import http.server
 import math
 import threading
 
@@ -5,6 +6,7 @@ import numpy as np
 import pytest
 import sim
 
+from makermods_playground.core import config
 from makermods_playground.core.robot import Robot
 
 
@@ -151,3 +153,33 @@ def test_disconnect_reports_an_arm_left_energized_by_an_earlier_program():
     robot, _ = sim.sim_robot("metal", sides=("left",), cameras=())
     robot.connect()
     assert robot.torque() == {"left": "off"} and robot.disconnect() == {"left": "released"}
+
+
+def test_a_url_camera_is_read_through_the_sdk(tmp_path):
+    import cv2
+    jpeg = cv2.imencode(".jpg", np.full((48, 64, 3), 128, np.uint8))[1].tobytes()
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Content-Length", str(len(jpeg)))
+            self.end_headers()
+            self.wfile.write(jpeg)
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    definition = config.RobotDef("cam", "metal", {"left": {"backend": "gs_usb", "port": "gs_usb:x"}},
+                                 {"top": f"url:http://127.0.0.1:{server.server_address[1]}/frame.jpg"})
+    arm, _ = sim.sim_arm("metal")
+    robot = Robot(definition, arms={"left": arm})
+    try:
+        robot.cameras["top"].open(timeout=5.0)
+        assert sim.wait_until(lambda: robot.frame("top") is not None, 5.0)
+        assert robot.frame("top")[0].shape == (48, 64, 3)
+    finally:
+        robot.close_cameras()
+        server.shutdown()

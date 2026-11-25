@@ -11,8 +11,8 @@ license = {file = "LICENSE"}
 requires-python = ">=3.10"
 dependencies = [
     # The arm SDK revisions this package is built on. Pinned only here.
-    "metal-arm @ git+https://github.com/makermods-robotics/metal-arm-sdk@7d2a3c82e5c4ed5c59ba59d7db7f6732f1449dea",
-    "maker-arm @ git+https://github.com/makermods-robotics/maker-arm-sdk@0ca54de562e3b346e647cbbbd212f6e8532fdb56",
+    "metal-arm @ git+https://github.com/makermods-robotics/metal-arm-sdk@096e545d60751f2db5d43ec93236857c4a5b072e",
+    "maker-arm @ git+https://github.com/makermods-robotics/maker-arm-sdk@def32433ace481188cc5bbce59b7e41ebb11a8e2",
     "dreamlabs-client>=1.1.3,<2",
     "numpy>=1.24",
     "pyyaml>=6",

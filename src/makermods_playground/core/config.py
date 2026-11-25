@@ -6,7 +6,7 @@ One YAML file per robot in ``$MAKERMODS_PLAYGROUND_HOME/robots`` (default ``~/.c
     arms:
       left:  {backend: gs_usb, port: "gs_usb:<serial>"}    # fields of the SDK rig's arm entries
       right: {backend: gs_usb, port: "gs_usb:<serial>"}
-    cameras: {top: "usb:<path>", left: "usb:<path>", right: "usb:<path>"}
+    cameras: {top: "usb:<path>", left: "usb:<path>", right: "url:<http URL>"}   # the SDK's camera ids
     settings: {servo_hz: 40}                     # optional, see Settings
 """
 

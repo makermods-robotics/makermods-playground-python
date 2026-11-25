@@ -384,7 +384,7 @@ def add_parsers(sub, common) -> None:
     p.add_argument("--arms", nargs="+", choices=config.SIDES)
     p.add_argument("--cameras", nargs="*", choices=config.CAMERAS)
     p.add_argument("--port", action="append", metavar="SIDE=ADDRESS", help="gs_usb:<serial>, /dev/ttyACM0 or can0")
-    p.add_argument("--camera", action="append", metavar="NAME=ID", help="top=usb:<path>")
+    p.add_argument("--camera", action="append", metavar="NAME=ID", help="top=usb:<path> or top=url:<http URL>")
     p.add_argument("--force", action="store_true")
     p.set_defaults(func=cmd_init)
     robot.add_parser("list", parents=[common], help="the robots defined").set_defaults(func=cmd_list)
