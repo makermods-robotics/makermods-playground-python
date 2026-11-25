@@ -1,5 +1,7 @@
 import http.server
 import math
+import os
+import signal
 import threading
 import time
 import types
@@ -403,3 +405,113 @@ def test_a_connect_failure_of_an_arm_at_rest_stays_the_sdks_own_error():
     with pytest.raises(robot.sdk.errors.ConnectError) as failed:
         robot.connect()
     assert not isinstance(failed.value, robot_module.ArmHeld) and "crashed" not in str(failed.value)
+
+
+def fail_last_check(robot, side="left"):
+    """That arm's return to rest is verified, then its last check before torque off fails: stop() leaves it holding."""
+    robot.arms[side]._release_if_still = lambda include, rest: False
+
+
+def holding(motors):
+    return all(m.enabled for j, m in motors.motors.items() if j != "gripper")
+
+
+def interrupt_main_after(seconds):
+    """A real SIGINT to this process after ``seconds`` (a KeyboardInterrupt in the main thread, even inside a join)."""
+    timer = threading.Timer(seconds, os.kill, args=(os.getpid(), signal.SIGINT))
+    timer.start()
+    return timer
+
+
+def test_a_second_connect_never_reaches_an_arm_left_holding():
+    robot, motors = sim.sim_robot("metal", cameras=())
+    robot.connect()
+    robot.enable()
+    fail_last_check(robot)
+    try:
+        assert robot.stop() == {"left": False, "right": True}
+        with pytest.raises(RuntimeError, match="already connected"):
+            robot.connect()
+        assert robot.states()["left"] == "enabled" and holding(motors["left"])
+    finally:
+        robot.estop()
+        robot.disconnect()
+
+
+def test_implicit_cleanup_leaves_an_unverified_arm_holding_without_moving_it():
+    robot, motors = sim.sim_robot("metal", cameras=())
+    robot.connect()
+    robot.enable()
+    fail_last_check(robot)
+    left, stops = robot.arms["left"], []
+    real_stop = left.stop
+    left.stop = lambda: stops.append(1) or real_stop()
+    try:
+        assert robot.stop() == {"left": False, "right": True} and stops == [1]
+        at = list(motors["left"].positions)
+        out = robot.disconnect()                    # implicit cleanup (also what leaving a with block does)
+        assert out["left"] in ("detached", "holding") and stops == [1]        # no second return was tried
+        assert holding(motors["left"]) and list(motors["left"].positions) == pytest.approx(at, abs=1e-3)
+    finally:
+        robot.estop()
+        robot.disconnect()
+
+
+def test_an_explicit_stop_tries_an_unverified_arm_again():
+    robot, motors = sim.sim_robot("metal", sides=("left",), cameras=())
+    robot.connect()
+    robot.enable()
+    real = robot.arms["left"]._release_if_still
+    fail_last_check(robot)
+    try:
+        assert robot.stop() == {"left": False} and robot.unverified == {"left"}
+        robot.arms["left"]._release_if_still = real
+        assert robot.stop() == {"left": True} and robot.unverified == set()
+    finally:
+        robot.estop()
+        robot.disconnect()
+
+
+def test_an_interrupt_while_an_arm_enables_still_brings_it_home():
+    robot, motors = sim.sim_robot("metal", cameras=())          # sim.START: away from rest
+    robot.connect()
+    left = robot.arms["left"]
+    real = left.enable
+
+    def slow(*args, **kwargs):
+        time.sleep(1.0)
+        real(*args, **kwargs)
+
+    left.enable = slow
+    timer = interrupt_main_after(0.3)
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            robot.enable()
+        time.sleep(1.5)                                          # a stray enable would have finished by now
+        assert robot.states() == {"left": "connected", "right": "connected"}
+        np.testing.assert_allclose(motors["left"].positions[:6], sim.rest_pose("metal")[:6],
+                                   atol=left.config.rest_settle)
+    finally:
+        timer.cancel()
+        robot.estop()
+        robot.disconnect()
+
+
+def test_an_interrupt_during_the_retract_stops_every_worker():
+    robot = at_rest("maker", sides=("left",))
+    arm, sent = robot.arms["left"], []
+    real = arm.move_to
+    arm.move_to = lambda *a, **k: sent.append(1) or real(*a, **k)
+    timer = interrupt_main_after(1.0)
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            robot.retract()
+        count = len(sent)
+        time.sleep(0.6)
+        assert len(sent) == count
+        assert not any(t.name == "retract-left" and t.is_alive() for t in threading.enumerate())
+        assert robot.stop() == {"left": True}
+    finally:
+        timer.cancel()
+        robot.estop()
+        robot.disconnect()

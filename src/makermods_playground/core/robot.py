@@ -83,6 +83,7 @@ class Robot:
         self.sides = [s for s in config.SIDES if s in self.arms]
         self.last_retract: dict[str, str] = {}    # side -> what the last retract did
         self.rehomed: list[str] = []              # arms enabled away from rest (enable())
+        self.unverified: set[str] = set()         # arms whose last return to rest was not verified: holding
 
     @classmethod
     def load(cls, name: Optional[str] = None) -> "Robot":
@@ -101,32 +102,82 @@ class Robot:
     def connect(self, cameras: bool = True) -> None:
         """Find every motor (torque stays off) and start the cameras. An arm that fails as one a crashed program left
         holding may (held_hint()) raises ArmHeld; the buses close without anything more sent to it."""
+        busy = {side: arm.state.value for side, arm in self.arms.items() if arm.state.value != "disconnected"}
+        if busy:                              # refused before anything: a rollback must never reach these arms
+            raise RuntimeError("already connected (" + ", ".join(f"{s} {state}" for s, state in busy.items()) + ")")
         failed: dict[str, Exception] = {}
-        sides = {id(arm): side for side, arm in self.arms.items()}
+        opened: list[str] = []
 
-        def connect_arm(arm) -> None:
+        def connect_arm(side: str) -> None:
             try:
-                arm.connect()
+                self.arms[side].connect()
             except self.sdk.errors.ConnectError as e:
-                failed[sides[id(arm)]] = e
+                failed[side] = e
                 raise
+            opened.append(side)
+            self.unverified.discard(side)
 
         try:
-            self.group.each(connect_arm)
+            self._each(connect_arm)
+            if cameras:
+                for cam in self.cameras.values():
+                    cam.open()
         except BaseException as e:
             hints = [hint for side in self.sides if side in failed and (hint := self.held_hint(side, failed[side]))]
-            self.group.disconnect()           # closes the buses; torque is never changed by it here
+            self.close_cameras()
+            self._close_opened(opened)
             if hints:
                 raise ArmHeld(hints[0]) from e
             raise
-        if cameras:
+
+    def _close_opened(self, sides) -> None:
+        """Close the buses of arms this call connected; torque is not touched (an arm that is enabled or holding is
+        never closed here)."""
+        for side in sides:
+            arm = self.arms[side]
+            if arm.state.value == "connected":
+                try:
+                    arm.disconnect()          # a connected arm: the bus closes, nothing is sent to the motors
+                except Exception as e:
+                    log.error("%s: closing the bus failed: %s", side, e)
+
+    def _each(self, fn, sides=None) -> None:
+        """fn(side) for every arm (of ``sides``), in parallel when each has its own bus. Every call that started is
+        waited for, through a KeyboardInterrupt too, before the first error (else the interrupt) is raised."""
+        sides = list(self.sides if sides is None else sides)
+        errors: dict[str, BaseException] = {}
+
+        def call(side):
             try:
-                for cam in self.cameras.values():
-                    cam.open()
-            except BaseException:
-                self.close_cameras()
-                self.group.disconnect()
-                raise
+                fn(side)
+            except BaseException as e:        # raised below, once every started call has ended
+                errors[side] = e
+
+        interrupted = None
+        if self.group.parallel and len(sides) > 1:
+            threads = []
+            try:
+                for side in sides:
+                    thread = threading.Thread(target=call, args=(side,), name=f"arm-{side}")
+                    thread.start()
+                    threads.append(thread)
+            finally:
+                for thread in threads:
+                    while thread.is_alive():
+                        try:
+                            thread.join()
+                        except KeyboardInterrupt as e:
+                            interrupted = e
+        else:
+            for side in sides:
+                call(side)
+                if isinstance(errors.get(side), KeyboardInterrupt):
+                    break
+        first = next((errors[s] for s in sides if s in errors), None)
+        if first is not None:
+            raise first
+        if interrupted is not None:
+            raise interrupted
 
     def enable(self, cancel: Optional[threading.Event] = None) -> None:
         """Torque on every arm, holding where it is. An arm that fails leaves the others stopped again.
@@ -138,20 +189,19 @@ class Robot:
         before the error is raised."""
         self.rehomed = []
         failed: dict[str, Exception] = {}
-        sides = {id(arm): side for side, arm in self.arms.items()}
 
-        def enable(arm) -> None:
+        def enable(side: str) -> None:
             try:
-                arm.enable(cancel=cancel)
+                self.arms[side].enable(cancel=cancel)
             except self.sdk.errors.ConnectError as e:
-                failed[sides[id(arm)]] = e
+                failed[side] = e
                 raise
+            self._aim_home(side)      # in this worker: the way home is set before anything can stop the arm
 
         try:
-            self.group.each(enable)
+            self._each(enable)
         except BaseException as e:
             try:
-                self._aim_home()
                 self.stop()           # only arms enabled here move; an arm that was refused is left as it is
             except Exception:
                 log.exception("bringing the enabled arms home failed")
@@ -159,7 +209,6 @@ class Robot:
             if hints:
                 raise ArmHeld(hints[0]) from e
             raise
-        self._aim_home()
 
     def held_hint(self, side: str, error: Exception) -> Optional[str]:
         """One line for a connect() or enable() ConnectError of an arm that a crashed program may have left holding,
@@ -199,15 +248,14 @@ class Robot:
             return f"{cli} --port {spec.port}"
         return f"{cli} --backend {spec.backend}" + (f" --port {spec.port}" if spec.port else "")
 
-    def _aim_home(self) -> None:
-        """Make the profile's rest pose the way home of each enabled arm whose enable pose is away from it."""
-        for side in self.sides:
-            arm = self.arms[side]
-            if arm.state.value != "enabled" or arm.rest_pose is None or not self.away_from_rest(side, arm.rest_pose):
-                continue
-            rest = self.rest_pose(side)
-            arm.rest_pose = [r if j.return_to_rest else q for r, q, j in zip(rest, arm.rest_pose, arm.config.joints)]
-            self.rehomed.append(side)
+    def _aim_home(self, side: str) -> None:
+        """Make the profile's rest pose the way home of an enabled arm whose enable pose is away from it."""
+        arm = self.arms[side]
+        if arm.state.value != "enabled" or arm.rest_pose is None or not self.away_from_rest(side, arm.rest_pose):
+            return
+        rest = self.rest_pose(side)
+        arm.rest_pose = [r if j.return_to_rest else q for r, q, j in zip(rest, arm.rest_pose, arm.config.joints)]
+        self.rehomed.append(side)
 
     def command(self, targets: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
         """Send joint targets (rad, seven per arm). Returns, per accepted arm, the target as the arm drives toward
@@ -226,9 +274,15 @@ class Robot:
 
     def stop(self) -> dict[str, bool]:
         """Bring every enabled arm home (the retract, then the joint return to its rest pose, see enable()), then
-        torque off. False where arrival could not be verified: that arm keeps holding."""
+        torque off. False where arrival could not be verified: that arm keeps holding, and later implicit cleanup
+        (disconnect(), leaving a ``with`` block) leaves it holding without moving it again."""
         self._try_retract()
-        return self.group.stop()
+        return self._remember(self.group.stop())
+
+    def _remember(self, verified: dict[str, bool]) -> dict[str, bool]:
+        for side, ok in verified.items():
+            (self.unverified.discard if ok else self.unverified.add)(side)
+        return verified
 
     def rest(self, cancel: Optional[threading.Event] = None) -> dict[str, bool]:
         """Each enabled arm in turn to its profile's rest pose (the retract, then the joint return), verified there,
@@ -243,7 +297,7 @@ class Robot:
             self.retract([side], cancel)
             if cancel is not None and cancel.is_set():
                 break
-            arrived[side] = arm.stop()
+            arrived[side] = self._remember({side: arm.stop()})[side]
             if not arrived[side]:
                 break
         return arrived
@@ -275,31 +329,40 @@ class Robot:
             return {}                 # nothing enabled: what the last retract did stays readable
         outcome: dict[str, str] = {}
         workers: dict[str, tuple[threading.Thread, threading.Event, threading.Lock]] = {}
-        for side in sides:
-            warm = self._warm_motor(side)
-            if warm:
-                outcome[side] = f"skipped: {warm}"
-                continue
-            ending, gate = threading.Event(), threading.Lock()
-            thread = threading.Thread(target=self._retract_arm, args=(side, ending, gate, outcome), daemon=True,
-                                      name=f"retract-{side}")
-            thread.start()
-            workers[side] = (thread, ending, gate)
-        deadline = time.monotonic() + RETRACT_LIMIT_S
         ended: dict[str, str] = {}
-        while any(thread.is_alive() and side not in ended for side, (thread, _, _) in workers.items()):
-            for side, (thread, ending, gate) in workers.items():
-                if not thread.is_alive() or side in ended:
+        try:
+            for side in sides:
+                warm = self._warm_motor(side)
+                if warm:
+                    outcome[side] = f"skipped: {warm}"
                     continue
-                why = (f"not done within {RETRACT_LIMIT_S:g} s" if time.monotonic() >= deadline else
-                       "cancelled" if cancel is not None and cancel.is_set() else self._warm_motor(side))
-                if why:
-                    ended[side] = why
-                    with gate:              # no target of this retract is sent after this
-                        ending.set()
-            time.sleep(0.05)
+                ending, gate = threading.Event(), threading.Lock()
+                thread = threading.Thread(target=self._retract_arm, args=(side, ending, gate, outcome), daemon=True,
+                                          name=f"retract-{side}")
+                workers[side] = (thread, ending, gate)      # registered first: finally reaches every one started
+                thread.start()
+            deadline = time.monotonic() + RETRACT_LIMIT_S
+            while any(thread.is_alive() and side not in ended for side, (thread, _, _) in workers.items()):
+                for side, (thread, ending, gate) in workers.items():
+                    if not thread.is_alive() or side in ended:
+                        continue
+                    why = (f"not done within {RETRACT_LIMIT_S:g} s" if time.monotonic() >= deadline else
+                           "cancelled" if cancel is not None and cancel.is_set() else self._warm_motor(side))
+                    if why:
+                        ended[side] = why
+                        with gate:              # no target of this retract is sent after this
+                            ending.set()
+                time.sleep(0.05)
+        finally:
+            for side, (thread, ending, gate) in workers.items():
+                if thread.ident is not None and thread.is_alive():
+                    ended.setdefault(side, "interrupted")
+                with gate:                      # whatever ended this call (an interrupt too), no worker sends on
+                    ending.set()
+            for side in ended:
+                if workers[side][0].ident is not None:
+                    workers[side][0].join(0.5)
         for side, why in ended.items():
-            workers[side][0].join(0.5)
             outcome.setdefault(side, f"ended early: {why}")
         for side in sides:
             log.info("%s: retract %s", side, outcome.get(side, "not run"))
@@ -311,9 +374,9 @@ class Robot:
         not simply at rest already)."""
         return {side: what for side, what in self.last_retract.items() if what not in ("done", AT_REST)}
 
-    def _try_retract(self) -> None:
+    def _try_retract(self, sides=None) -> None:
         try:
-            self.retract()
+            self.retract(sides)
         except Exception:
             log.exception("retract failed; returning in joint space")
 
@@ -481,6 +544,7 @@ class Robot:
                 out[side] = {k: result[k] for k in ("ok", "unconfirmed", "missing")}
                 continue
             arm.disable()
+            self.unverified.discard(side)
             names = {m.motor_id: j.label for m, j in zip(arm.motors, arm.config.joints)}
             unconfirmed = [names.get(i, i) for i in arm.unconfirmed_disable]
             out[side] = {"ok": not unconfirmed, "unconfirmed": unconfirmed, "missing": []}
@@ -498,13 +562,36 @@ class Robot:
 
     def disconnect(self) -> dict[str, str]:
         """Close cameras and buses. An arm that is still enabled comes home first (as stop()); one whose return to
-        rest is not verified is left holding. Returns the SDK's ArmGroup.close() outcome per arm: only "released" is
-        torque off confirmed."""
+        rest is not verified is left holding. An arm whose last return was not verified (``unverified``) is not
+        moved again: it is left holding as it is ("detached": bus closed, torque on; "holding": a stiff joint would
+        drop on its motor watchdog, so this process keeps commanding it). Returns the outcome per arm (the SDK's
+        ArmGroup.close() for the others): only "released" is torque off confirmed."""
         try:
-            self._try_retract()
-            return self.group.close()
+            held = {side: self._leave_holding(side) for side in self.sides
+                    if side in self.unverified and self.arms[side].state.value in ("enabled", "fault")}
+            others = [side for side in self.sides if side not in held]
+            closed = {}
+            if others:
+                self._try_retract(others)
+                closed = self.sdk.rig.ArmGroup({s: self.arms[s] for s in others}, parallel=self.group.parallel).close()
+            return {side: {**closed, **held}[side] for side in self.sides}
         finally:
             self.close_cameras()
+
+    def _leave_holding(self, side: str) -> str:
+        """Leave an arm holding where it is, with no motion: "detached" (bus closed, torque on) or, when a stiff joint
+        would drop on its motor watchdog, "holding" (this process keeps commanding it)."""
+        arm = self.arms[side]
+        arm.hold_current_position()
+        unsafe = arm.detach_unsafe()
+        if unsafe:
+            log.error("%s: return to rest not verified; still holding with torque on (control loop running): %s "
+                      "would drop on their watchdog if commands stopped", side, ", ".join(unsafe))
+            return "holding"
+        releasing = arm.detach()
+        log.error("%s: return to rest not verified; left holding with torque on (%s release on their watchdog). "
+                  "Support it, then run '%s'", side, ", ".join(releasing) or "no joints", self.rest_command(side))
+        return "detached"
 
     def close_cameras(self) -> None:
         for cam in self.cameras.values():
